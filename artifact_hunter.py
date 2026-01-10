@@ -235,16 +235,16 @@ def run_artifact_hunter(limit: int = None):
     
     for row_idx, case in enumerate(cases, start=2):
         # Skip already assessed
-        if case.get("Footage Assessment", "").strip():
+        if str(case.get("Footage Assessment", "")).strip():
             continue
         
         if limit and stats["processed"] >= limit:
             print(f"\n[LIMIT] Reached {limit} cases")
             break
         
-        defendant = case.get("Defendant Name(s)", "").strip()
-        jurisdiction = case.get("Jurisdiction", "").strip()
-        intake_id = case.get("Intake_ID", "").strip()
+        defendant = str(case.get("Defendant Name(s)", "")).strip()
+        jurisdiction = str(case.get("Jurisdiction", "")).strip()
+        intake_id = str(case.get("Intake_ID", "")).strip()
         
         print(f"\n[{row_idx}] {defendant[:40]}...")
         print(f"    Jurisdiction: {jurisdiction}")
@@ -254,10 +254,10 @@ def run_artifact_hunter(limit: int = None):
         crime_type = ""
         if intake_id and intake_id in intake_by_id:
             intake_row = intake_by_id[intake_id]
-            queries_str = intake_row.get("Artifact Queries", "")
+            queries_str = str(intake_row.get("Artifact Queries", ""))
             if queries_str:
                 custom_queries = [q.strip() for q in queries_str.split("|") if q.strip()]
-            crime_type = intake_row.get("Crime Type", "")
+            crime_type = str(intake_row.get("Crime Type", ""))
         
         # Search
         search_results = search_artifacts(exa, defendant, jurisdiction, crime_type, custom_queries)
