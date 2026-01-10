@@ -116,7 +116,6 @@ def search_artifacts(exa, defendant: str, jurisdiction: str,
             search_results = exa.search(
                 query=query,
                 type="auto",
-                use_autoprompt=True,
                 num_results=5,
                 include_domains=[
                     "youtube.com", "vimeo.com", "youtu.be",
