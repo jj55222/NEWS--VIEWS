@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 NEWS → VIEWS: Exa-Powered News Intake Pipeline
 Optimized for Claude Code autonomous execution
@@ -143,7 +144,6 @@ def search_region(exa, region_id: str, metro_tokens: str,
         results = exa.search_and_contents(
             query=query,
             type="auto",
-            use_autoprompt=True,
             start_published_date=start_date,
             end_published_date=end_date,
             num_results=max_results,
