@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 NEWS → VIEWS: Exa-Powered News Intake Pipeline
 Optimized for Claude Code autonomous execution

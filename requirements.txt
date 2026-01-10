@@ -1,0 +1,14 @@
+# NEWS → VIEWS Dependencies
+
+# Google Sheets
+gspread>=5.0.0
+google-auth>=2.0.0
+
+# Exa Search
+exa-py>=1.0.0
+
+# OpenRouter/OpenAI
+openai>=1.0.0
+
+# Utilities
+python-dotenv>=1.0.0
