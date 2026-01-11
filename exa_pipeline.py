@@ -175,19 +175,42 @@ def search_region(exa, region_id: str, metro_tokens: str,
 # LLM TRIAGE
 # =============================================================================
 
-TRIAGE_SCHEMA = {
+ENHANCED_TRIAGE_SCHEMA = {
     "story_summary": "",
     "why_disturbing": "",
     "crime_type": "",
     "jurisdiction": {"city": "", "county": "", "state": ""},
     "incident_year": "",
     "defendant_names": [],
+    "victim_names": [],
     "victim_roles": [],
+    "case_identifiers": {
+        "case_number": "",
+        "incident_date": "",
+        "arrest_date": "",
+        "agency": "",
+        "agency_abbrev": "",
+    },
+    "incident_location": "",
+    "incident_type": "",
+    "footage_indicators": {
+        "bodycam_likely": False,
+        "dashcam_likely": False,
+        "surveillance_likely": False,
+        "interrogation_mentioned": False,
+        "trial_televised": False,
+    },
     "viability_score": 0,
     "verdict": "KILL",
     "kill_reason": "",
-    "artifact_queries": [],
+    "artifact_queries": [
+        "{defendant} {agency} bodycam {year}",
+        "{case_number} court video",
+        "{victim} {defendant} trial",
+    ],
 }
+
+TRIAGE_SCHEMA = ENHANCED_TRIAGE_SCHEMA
 
 TRIAGE_PROMPT = """You are triaging crime news for a true crime content creator.
 
