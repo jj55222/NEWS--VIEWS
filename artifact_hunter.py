@@ -20,6 +20,24 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Import jurisdiction-specific portal configuration
+try:
+    from jurisdiction_portals import (
+        get_jurisdiction_config,
+        get_search_domains_for_region,
+        get_agency_youtube_channels,
+        get_transparency_portals,
+        build_jurisdiction_queries,
+        is_florida_case,
+        has_court_video,
+        TRUE_CRIME_CHANNELS,
+        JURISDICTION_PORTALS,
+    )
+    HAS_JURISDICTION_DATA = True
+except ImportError:
+    HAS_JURISDICTION_DATA = False
+    print("⚠️  jurisdiction_portals.py not found - using generic searches")
+
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
@@ -79,90 +97,341 @@ def get_llm_client():
 # ARTIFACT SEARCH
 # =============================================================================
 
-def search_artifacts(exa, defendant: str, jurisdiction: str, 
-                     crime_type: str = "", custom_queries: List[str] = None) -> Dict:
-    """Search for video artifacts."""
-    results = {"body_cam": [], "interrogation": [], "court": [], "other": []}
-    
+def search_artifacts(exa, defendant: str, jurisdiction: str,
+                     crime_type: str = "", custom_queries: List[str] = None,
+                     region_id: str = None, incident_year: str = None) -> Dict:
+    """Search for video artifacts using jurisdiction-specific sources."""
+    results = {
+        "body_cam": [],
+        "interrogation": [],
+        "court": [],
+        "news": [],
+        "true_crime_coverage": [],
+        "other": []
+    }
+
     defendant = defendant.split(",")[0].strip() if defendant else ""
-    jurisdiction = jurisdiction.strip() if jurisdiction else ""
-    
+    jurisdiction = str(jurisdiction).strip() if jurisdiction else ""
+
     if not defendant and not jurisdiction:
         return results
-    
-    queries = []
-    
-    # Body cam
-    if jurisdiction:
-        queries.append(("body_cam", f"{jurisdiction} police body camera footage"))
-        queries.append(("body_cam", f"{jurisdiction} bodycam video incident"))
-    
-    # Interrogation
-    if defendant:
-        queries.append(("interrogation", f"{defendant} interrogation video police interview"))
-        queries.append(("interrogation", f"{defendant} confession interview recording"))
-    
-    # Court
-    if defendant:
-        queries.append(("court", f"{defendant} court video trial sentencing"))
-    
-    # Custom queries
-    for q in (custom_queries or [])[:3]:
-        queries.append(("other", q))
-    
-    # Execute searches
-    for qtype, query in queries:
+
+    # Use jurisdiction-specific queries if available
+    if HAS_JURISDICTION_DATA and region_id:
+        queries = _build_jurisdiction_specific_queries(
+            region_id, defendant, jurisdiction, incident_year, custom_queries
+        )
+    else:
+        queries = _build_generic_queries(defendant, jurisdiction, custom_queries)
+
+    # Execute all searches
+    for qtype, query, domains in queries:
         try:
-            search_results = exa.search(
-                query=query,
-                type="auto",
-                num_results=5,
-                include_domains=[
-                    "youtube.com", "vimeo.com", "youtu.be",
-                    "facebook.com", "twitter.com",
-                ]
-            )
-            
+            search_kwargs = {
+                "query": query,
+                "type": "auto",
+                "num_results": 5,
+            }
+
+            # Add domain filter if specified
+            if domains:
+                search_kwargs["include_domains"] = domains
+
+            search_results = exa.search(**search_kwargs)
+
             for r in search_results.results:
                 results[qtype].append({
                     "url": r.url,
                     "title": getattr(r, 'title', ''),
                     "score": getattr(r, 'score', 0),
-                    "query": query
+                    "query": query,
+                    "source_type": _classify_source(r.url)
                 })
-            
+
             time.sleep(0.3)
-            
+
         except Exception as e:
             print(f"      Search error: {e}")
-    
+
     return results
+
+
+def _build_jurisdiction_specific_queries(region_id: str, defendant: str,
+                                          jurisdiction: str, incident_year: str,
+                                          custom_queries: List[str]) -> List[tuple]:
+    """Build targeted queries using jurisdiction portal data."""
+    queries = []
+    config = get_jurisdiction_config(region_id)
+
+    if not config:
+        return _build_generic_queries(defendant, jurisdiction, custom_queries)
+
+    # Get agency info
+    agencies = config.get("agencies", [])
+    agency_abbrevs = [a.get("abbrev", a["name"]) for a in agencies]
+    primary_agency = agency_abbrevs[0] if agency_abbrevs else ""
+
+    year_suffix = f" {incident_year}" if incident_year else ""
+
+    # VIDEO PLATFORMS for bodycam/interrogation/court
+    video_domains = ["youtube.com", "vimeo.com", "youtu.be"]
+
+    # 1. BODYCAM SEARCHES - Agency-specific
+    if primary_agency:
+        queries.append(("body_cam",
+            f"{primary_agency} bodycam {defendant}{year_suffix}",
+            video_domains))
+        queries.append(("body_cam",
+            f"{defendant} body camera {primary_agency} footage",
+            video_domains))
+
+    # Check if agency has YouTube channel - search there specifically
+    agency_channels = get_agency_youtube_channels(region_id)
+    if agency_channels:
+        queries.append(("body_cam",
+            f"{defendant} site:youtube.com bodycam OR \"body camera\"",
+            None))  # No domain filter, using site: in query
+
+    # Florida cases - stronger public records, more likely to have footage
+    if is_florida_case(region_id):
+        queries.append(("body_cam",
+            f"{defendant} Florida bodycam released",
+            video_domains))
+
+    # 2. INTERROGATION SEARCHES
+    queries.append(("interrogation",
+        f"{defendant} interrogation interview",
+        video_domains))
+    queries.append(("interrogation",
+        f"{defendant} police interview confession",
+        video_domains))
+
+    # Search true crime channels that feature interrogations
+    queries.append(("interrogation",
+        f"{defendant} interrogation site:youtube.com JCS OR \"Matt Orchard\" OR Dreading",
+        None))
+
+    # 3. COURT VIDEO SEARCHES
+    queries.append(("court",
+        f"{defendant} trial court video",
+        video_domains))
+    queries.append(("court",
+        f"{defendant} sentencing hearing verdict",
+        video_domains))
+
+    # If jurisdiction has court video, search specifically
+    if has_court_video(region_id):
+        state = config.get("state", "")
+        queries.append(("court",
+            f"{defendant} {state} trial Law Crime Network OR Court TV",
+            video_domains))
+
+    # 4. NEWS SEARCHES - Local outlets
+    news_domains = config.get("search_domains", [])
+    if news_domains and defendant:
+        queries.append(("news",
+            f"{defendant} arrest charged",
+            news_domains[:3]))  # Top 3 local news sites
+
+    # 5. TRUE CRIME COVERAGE CHECK
+    queries.append(("true_crime_coverage",
+        f"{defendant} true crime documentary",
+        video_domains))
+    queries.append(("true_crime_coverage",
+        f"{defendant} case explained analysis",
+        video_domains))
+
+    # 6. CUSTOM QUERIES
+    for q in (custom_queries or [])[:3]:
+        queries.append(("other", q, video_domains))
+
+    return queries
+
+
+def _build_generic_queries(defendant: str, jurisdiction: str,
+                           custom_queries: List[str]) -> List[tuple]:
+    """Fallback generic queries when jurisdiction data unavailable."""
+    queries = []
+    video_domains = ["youtube.com", "vimeo.com", "youtu.be", "facebook.com", "twitter.com"]
+
+    if jurisdiction:
+        queries.append(("body_cam", f"{jurisdiction} police body camera footage", video_domains))
+        queries.append(("body_cam", f"{jurisdiction} bodycam video incident", video_domains))
+
+    if defendant:
+        queries.append(("interrogation", f"{defendant} interrogation video police interview", video_domains))
+        queries.append(("interrogation", f"{defendant} confession interview recording", video_domains))
+        queries.append(("court", f"{defendant} court video trial sentencing", video_domains))
+
+    for q in (custom_queries or [])[:3]:
+        queries.append(("other", q, video_domains))
+
+    return queries
+
+
+def _classify_source(url: str) -> str:
+    """Classify the source type from URL."""
+    url_lower = url.lower()
+
+    if "youtube.com" in url_lower or "youtu.be" in url_lower:
+        # Check for official channels
+        if any(ch in url_lower for ch in ["policeactivity", "lawcrime", "courttv"]):
+            return "official_channel"
+        return "youtube"
+    elif "vimeo.com" in url_lower:
+        return "vimeo"
+    elif any(news in url_lower for news in [".gov", "police.org", "sheriff"]):
+        return "official_govt"
+    elif any(news in url_lower for news in ["news", "chronicle", "times", "post"]):
+        return "news_outlet"
+    else:
+        return "other"
+
+
+def search_transparency_portals(region_id: str, defendant: str) -> List[Dict]:
+    """Search transparency portals for a region (returns portal URLs to check manually)."""
+    if not HAS_JURISDICTION_DATA:
+        return []
+
+    portals = get_transparency_portals(region_id)
+    results = []
+
+    for portal in portals:
+        results.append({
+            "agency": portal["name"],
+            "portal_type": portal["type"],
+            "url": portal["url"],
+            "search_suggestion": f"Search for: {defendant}",
+            "notes": "Manual search required - FOIA portals don't allow API access"
+        })
+
+    return results
+
+
+def check_existing_coverage(exa, defendant: str) -> Dict:
+    """Check if case already has true crime coverage."""
+    coverage = {
+        "has_documentary": False,
+        "has_podcast": False,
+        "has_youtube_coverage": False,
+        "coverage_sources": []
+    }
+
+    try:
+        # Check for documentary/series coverage
+        doc_results = exa.search(
+            query=f"{defendant} documentary Netflix Hulu true crime series",
+            type="auto",
+            num_results=5
+        )
+
+        for r in doc_results.results:
+            if any(kw in r.url.lower() for kw in ["netflix", "hulu", "hbo", "documentary"]):
+                coverage["has_documentary"] = True
+                coverage["coverage_sources"].append({
+                    "type": "documentary",
+                    "url": r.url,
+                    "title": getattr(r, 'title', '')
+                })
+
+        # Check for podcast coverage
+        pod_results = exa.search(
+            query=f"{defendant} podcast episode true crime",
+            type="auto",
+            num_results=5,
+            include_domains=["spotify.com", "apple.com", "podbean.com", "stitcher.com"]
+        )
+
+        if pod_results.results:
+            coverage["has_podcast"] = True
+            for r in pod_results.results:
+                coverage["coverage_sources"].append({
+                    "type": "podcast",
+                    "url": r.url,
+                    "title": getattr(r, 'title', '')
+                })
+
+        # Check YouTube true crime channels
+        yt_results = exa.search(
+            query=f"{defendant} site:youtube.com true crime case",
+            type="auto",
+            num_results=10
+        )
+
+        if len(yt_results.results) > 3:
+            coverage["has_youtube_coverage"] = True
+            for r in yt_results.results[:5]:
+                coverage["coverage_sources"].append({
+                    "type": "youtube",
+                    "url": r.url,
+                    "title": getattr(r, 'title', '')
+                })
+
+        time.sleep(0.5)
+
+    except Exception as e:
+        print(f"      Coverage check error: {e}")
+
+    return coverage
 
 
 def assess_artifacts(llm, case_info: Dict, search_results: Dict) -> Dict:
     """Use LLM to assess artifact availability."""
-    prompt = f"""Assess whether video artifacts exist for this case:
+
+    # Prepare search results summary
+    body_cam_results = search_results.get('body_cam', [])[:5]
+    interrogation_results = search_results.get('interrogation', [])[:5]
+    court_results = search_results.get('court', [])[:5]
+    news_results = search_results.get('news', [])[:3]
+    coverage_results = search_results.get('true_crime_coverage', [])[:3]
+
+    prompt = f"""Assess whether video artifacts exist for this TRUE CRIME case.
 
 CASE:
 - Defendant: {case_info.get('defendant', 'Unknown')}
 - Jurisdiction: {case_info.get('jurisdiction', 'Unknown')}
-- Crime: {case_info.get('crime_type', 'Unknown')}
+- Crime Type: {case_info.get('crime_type', 'Unknown')}
 
 SEARCH RESULTS:
-Body Cam: {json.dumps(search_results.get('body_cam', [])[:5], indent=2)}
-Interrogation: {json.dumps(search_results.get('interrogation', [])[:5], indent=2)}
-Court: {json.dumps(search_results.get('court', [])[:5], indent=2)}
 
-Based on URLs and titles, return JSON:
+BODY CAM / DASH CAM:
+{json.dumps(body_cam_results, indent=2) if body_cam_results else "No results found"}
+
+INTERROGATION / INTERVIEW:
+{json.dumps(interrogation_results, indent=2) if interrogation_results else "No results found"}
+
+COURT / TRIAL VIDEO:
+{json.dumps(court_results, indent=2) if court_results else "No results found"}
+
+NEWS COVERAGE:
+{json.dumps(news_results, indent=2) if news_results else "No results found"}
+
+EXISTING TRUE CRIME COVERAGE:
+{json.dumps(coverage_results, indent=2) if coverage_results else "No results found"}
+
+ASSESSMENT INSTRUCTIONS:
+1. Check if URLs/titles actually match this specific defendant and case
+2. "YES" = Confident this is footage of THIS case
+3. "MAYBE" = Could be related but needs verification
+4. "NO" = No relevant footage found
+5. Prioritize official sources (police departments, courts, news outlets)
+
+Return JSON:
 {{
     "body_cam_exists": "YES/MAYBE/NO",
-    "body_cam_sources": ["url1"],
+    "body_cam_sources": ["url1", "url2"],
+    "body_cam_confidence": "Explanation of why you think this is/isn't the right case",
     "interrogation_exists": "YES/MAYBE/NO",
     "interrogation_sources": ["url1"],
+    "interrogation_confidence": "Explanation",
     "court_video_exists": "YES/MAYBE/NO",
     "court_sources": ["url1"],
+    "court_confidence": "Explanation",
+    "has_existing_coverage": true/false,
+    "coverage_competition": "NONE/LOW/MEDIUM/HIGH",
     "overall_assessment": "ENOUGH/BORDERLINE/INSUFFICIENT",
-    "notes": "Brief explanation"
+    "content_potential": "Brief note on content creation viability",
+    "notes": "Key observations about available evidence"
 }}
 
 JSON only:"""
@@ -244,24 +513,53 @@ def run_artifact_hunter(limit: int = None):
         defendant = str(case.get("Defendant Name(s)", "")).strip()
         jurisdiction = str(case.get("Jurisdiction", "")).strip()
         intake_id = str(case.get("Intake_ID", "")).strip()
-        
+
         print(f"\n[{row_idx}] {defendant[:40]}...")
         print(f"    Jurisdiction: {jurisdiction}")
-        
-        # Get custom queries from intake
+
+        # Get custom queries and metadata from intake
         custom_queries = []
         crime_type = ""
+        region_id = ""
+        incident_year = ""
+
         if intake_id and intake_id in intake_by_id:
             intake_row = intake_by_id[intake_id]
             queries_str = str(intake_row.get("Artifact Queries", ""))
             if queries_str:
                 custom_queries = [q.strip() for q in queries_str.split("|") if q.strip()]
             crime_type = str(intake_row.get("Crime Type", ""))
-        
-        # Search
-        search_results = search_artifacts(exa, defendant, jurisdiction, crime_type, custom_queries)
+            region_id = str(intake_row.get("Region_ID", "")).strip()
+            # Try to extract year from publication date or incident
+            pub_year = str(intake_row.get("Pub_Year", "")).strip()
+            if pub_year and pub_year.isdigit():
+                incident_year = pub_year
+
+        # Show jurisdiction-specific info if available
+        if HAS_JURISDICTION_DATA and region_id:
+            config = get_jurisdiction_config(region_id)
+            if config:
+                print(f"    Region: {region_id} ({config.get('name', 'Unknown')}, {config.get('state', '')})")
+
+                # Show transparency portals for manual checking
+                portals = get_transparency_portals(region_id)
+                if portals:
+                    print(f"    📁 Transparency portals to check:")
+                    for p in portals[:2]:
+                        print(f"       - {p['name']}: {p['url']}")
+
+        # Search with jurisdiction-specific queries
+        search_results = search_artifacts(
+            exa, defendant, jurisdiction, crime_type, custom_queries,
+            region_id=region_id, incident_year=incident_year
+        )
         total = sum(len(v) for v in search_results.values())
         print(f"    Found {total} potential sources")
+
+        # Show breakdown by type
+        for stype, sresults in search_results.items():
+            if sresults:
+                print(f"      - {stype}: {len(sresults)} results")
         
         # Assess
         assessment = assess_artifacts(llm, {
