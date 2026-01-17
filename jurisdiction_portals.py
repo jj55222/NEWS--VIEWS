@@ -658,6 +658,93 @@ JURISDICTION_PORTALS = {
             "nbcdfw.com",
         ]
     },
+
+    # ==========================================================================
+    # CANADA
+    # ==========================================================================
+    "CAN_ON": {
+        "name": "Ontario",
+        "state": "ON",
+        "country": "Canada",
+        "agencies": [
+            {
+                "name": "York Regional Police",
+                "abbrev": "YRP",
+                "youtube": "https://www.youtube.com/@YorkRegionalPolice",
+                "transparency_portal": None,
+                "notes": "Covers Markham, Richmond Hill, Vaughan area"
+            },
+            {
+                "name": "Toronto Police Service",
+                "abbrev": "TPS",
+                "youtube": "https://www.youtube.com/@TorontoPolice",
+                "transparency_portal": None,
+            },
+            {
+                "name": "Ontario Provincial Police",
+                "abbrev": "OPP",
+                "youtube": "https://www.youtube.com/@OPPMedia",
+                "transparency_portal": None,
+            }
+        ],
+        "courts": [
+            {
+                "name": "Ontario Superior Court of Justice",
+                "website": "https://www.ontariocourts.ca/scj/",
+                "has_video": False,
+                "notes": "Canadian courts have restrictions on cameras - rely on news coverage"
+            }
+        ],
+        "news_channels": [
+            "https://www.youtube.com/@CBCNews",
+            "https://www.youtube.com/@CTVNews",
+            "https://www.youtube.com/@GlobalNews",
+        ],
+        "search_domains": [
+            "cbc.ca",
+            "thestar.com",
+            "globalnews.ca",
+            "cp24.com",
+            "torontolife.com",
+        ],
+        "special_notes": "Canadian court restrictions limit video access. Rely on news coverage and documentaries."
+    },
+
+    "CAN_BC": {
+        "name": "British Columbia",
+        "state": "BC",
+        "country": "Canada",
+        "agencies": [
+            {
+                "name": "Vancouver Police Department",
+                "abbrev": "VPD",
+                "youtube": None,
+                "transparency_portal": None,
+            },
+            {
+                "name": "Royal Canadian Mounted Police",
+                "abbrev": "RCMP",
+                "youtube": "https://www.youtube.com/@rcaboringdystopia",
+                "transparency_portal": None,
+            }
+        ],
+        "courts": [
+            {
+                "name": "Supreme Court of British Columbia",
+                "website": "https://www.bccourts.ca/",
+                "has_video": False,
+            }
+        ],
+        "news_channels": [
+            "https://www.youtube.com/@CBCNews",
+            "https://www.youtube.com/@GlobalBC",
+        ],
+        "search_domains": [
+            "cbc.ca",
+            "globalnews.ca",
+            "vancouversun.com",
+        ]
+    },
 }
 
 # ==========================================================================
@@ -813,3 +900,15 @@ def has_court_video(region_id: str) -> bool:
         if court.get("has_video"):
             return True
     return False
+
+
+def is_canadian_case(region_id: str) -> bool:
+    """Check if region is in Canada (more restrictive court access)."""
+    config = get_jurisdiction_config(region_id)
+    return config.get("country") == "Canada"
+
+
+def get_country(region_id: str) -> str:
+    """Get country for a region (defaults to USA)."""
+    config = get_jurisdiction_config(region_id)
+    return config.get("country", "USA")
