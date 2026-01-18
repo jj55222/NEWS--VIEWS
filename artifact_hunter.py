@@ -990,6 +990,123 @@ JSON only, no other text:"""
 
 
 # =============================================================================
+# ENSEMBLE MODE - Compare multiple models via OpenRouter
+# =============================================================================
+
+# Default models for ensemble comparison
+ENSEMBLE_MODELS = [
+    "deepseek/deepseek-chat",      # Fast, cheap, good at structured output
+    "anthropic/claude-3.5-sonnet", # Strong reasoning
+    "openai/gpt-4o-mini",          # Fast, reliable
+]
+
+def assess_artifacts_ensemble(llm, case_info: Dict, search_results: Dict,
+                               models: List[str] = None) -> Dict:
+    """
+    Run assessment with multiple models and combine results.
+    All models run through OpenRouter with a single API key.
+
+    Aggregation strategy:
+    - Takes consensus on exists (YES if any says YES)
+    - Best quality rating from any model
+    - Combines and dedupes sources
+    - Majority vote for overall_assessment
+    - Averages confidence scores
+    """
+    models_to_use = models or ENSEMBLE_MODELS
+    assessments = []
+
+    for model_id in models_to_use:
+        model_name = model_id.split("/")[-1]  # Get short name for display
+        print(f"      Running {model_name}...")
+
+        result = assess_artifacts(llm, case_info, search_results, model=model_id)
+        if result:
+            assessments.append(result)
+
+    if not assessments:
+        return {}
+
+    if len(assessments) == 1:
+        return assessments[0]
+
+    # Combine assessments from multiple models
+    combined = {
+        "defendant": case_info.get("defendant", "Unknown"),
+        "jurisdiction": case_info.get("jurisdiction", "Unknown"),
+        "_ensemble": True,
+        "_models_used": [a.get("_model_used", "unknown") for a in assessments],
+    }
+
+    # Combine artifact assessments
+    artifact_types = ["interrogation", "bodycam", "court", "call_911", "discovery_docs"]
+
+    for atype in artifact_types:
+        exists_votes = []
+        qualities = []
+        all_sources = []
+        all_notes = []
+
+        for assessment in assessments:
+            artifact = assessment.get(atype, {})
+            if isinstance(artifact, dict):
+                exists_votes.append(artifact.get("exists", "NO"))
+                qualities.append(artifact.get("quality", "NONE"))
+                all_sources.extend(artifact.get("sources", []))
+                if artifact.get("notes"):
+                    all_notes.append(artifact.get("notes"))
+
+        # Consensus: YES if any model says YES
+        if "YES" in exists_votes:
+            consensus_exists = "YES"
+        elif "MAYBE" in exists_votes:
+            consensus_exists = "MAYBE"
+        else:
+            consensus_exists = "NO"
+
+        # Best quality from any model
+        quality_order = ["FULL", "EXCELLENT", "EXTENSIVE", "GOOD", "PARTIAL",
+                         "CLIPS", "ADEQUATE", "LIMITED", "MARGINAL", "POOR", "NONE"]
+        best_quality = "NONE"
+        for q in quality_order:
+            if any(qu.upper() == q for qu in qualities):
+                best_quality = q
+                break
+
+        combined[atype] = {
+            "exists": consensus_exists,
+            "quality": best_quality,
+            "sources": list(set(all_sources))[:5],  # Dedupe and limit
+            "notes": " | ".join(all_notes[:2]) if all_notes else ""
+        }
+
+    # Overall assessment - majority vote
+    overall_votes = [a.get("overall_assessment", "INSUFFICIENT") for a in assessments]
+    vote_counts = {}
+    for vote in overall_votes:
+        vote_counts[vote] = vote_counts.get(vote, 0) + 1
+    combined["overall_assessment"] = max(vote_counts, key=vote_counts.get)
+
+    # Average confidence
+    confidences = [a.get("confidence", 0.5) for a in assessments]
+    combined["confidence"] = sum(confidences) / len(confidences)
+
+    # Combine red flags
+    all_flags = []
+    for a in assessments:
+        all_flags.extend(a.get("red_flags", []))
+    combined["red_flags"] = list(set(all_flags))[:5]
+
+    # Combine recommendations
+    all_recs = []
+    for a in assessments:
+        all_recs.extend(a.get("recommended_manual_checks", []))
+    combined["recommended_manual_checks"] = list(set(all_recs))[:5]
+
+    return combined
+
+
+# =============================================================================
 # BENCHMARK TESTING
 # =============================================================================
 
@@ -1076,7 +1193,7 @@ def run_benchmark(exa, llm, model: str = None) -> Dict:
 # MAIN PIPELINE
 # =============================================================================
 
-def run_artifact_hunter(limit: int = None, model: str = None):
+def run_artifact_hunter(limit: int = None, model: str = None, ensemble: bool = False):
     """Hunt for artifacts for cases in CASE ANCHOR."""
     print("=" * 60)
     print("NEWS → VIEWS: Artifact Hunter v2.0")
@@ -1087,7 +1204,13 @@ def run_artifact_hunter(limit: int = None, model: str = None):
 
     # Resolve model shorthand
     use_model = resolve_model(model) if model else OPENROUTER_MODEL
-    print(f"Model: {use_model}")
+
+    if ensemble:
+        print(f"Mode: ENSEMBLE (comparing {len(ENSEMBLE_MODELS)} models)")
+        for m in ENSEMBLE_MODELS:
+            print(f"  - {m}")
+    else:
+        print(f"Model: {use_model}")
 
     # Initialize
     print("\n[INIT] Connecting...")
@@ -1179,7 +1302,7 @@ def run_artifact_hunter(limit: int = None, model: str = None):
                 platforms = set(r.get("platform", "Unknown") for r in sresults)
                 print(f"      - {stype}: {len(sresults)} ({', '.join(platforms)})")
 
-        # Assess with LLM
+        # Assess with LLM (single model or ensemble)
         case_info = {
             "defendant": defendant,
             "jurisdiction": jurisdiction,
@@ -1187,7 +1310,11 @@ def run_artifact_hunter(limit: int = None, model: str = None):
             "incident_year": incident_year
         }
 
-        assessment = assess_artifacts(llm, case_info, search_results, model=use_model)
+        if ensemble:
+            print("    Running ensemble assessment...")
+            assessment = assess_artifacts_ensemble(llm, case_info, search_results)
+        else:
+            assessment = assess_artifacts(llm, case_info, search_results, model=use_model)
 
         if not assessment:
             stats["errors"] += 1
@@ -1280,9 +1407,13 @@ Or use full model IDs:
   --model deepseek/deepseek-chat
   --model anthropic/claude-3.5-sonnet
 
+Ensemble mode (compares 3 models, combines results):
+  --ensemble                # Uses DeepSeek + Claude + GPT-4o-mini
+
 Examples:
   python artifact_hunter.py --model deepseek --limit 5
   python artifact_hunter.py --model claude-sonnet
+  python artifact_hunter.py --ensemble --limit 3
   python artifact_hunter.py --benchmark --model gpt-4o
 """
     )
@@ -1291,6 +1422,8 @@ Examples:
     parser.add_argument("--benchmark", action="store_true", help="Run ground truth benchmark")
     parser.add_argument("--model", type=str,
         help="Model shortcut or full ID (e.g., deepseek, claude-sonnet, openai/gpt-4o)")
+    parser.add_argument("--ensemble", action="store_true",
+        help="Compare multiple models and combine results (DeepSeek + Claude + GPT-4o-mini)")
     parser.add_argument("--list-models", action="store_true",
         help="List available model shortcuts")
 
@@ -1323,7 +1456,7 @@ Examples:
         run_benchmark(exa, llm, model=args.model)
         return
 
-    run_artifact_hunter(limit=args.limit, model=args.model)
+    run_artifact_hunter(limit=args.limit, model=args.model, ensemble=args.ensemble)
 
 
 if __name__ == "__main__":
