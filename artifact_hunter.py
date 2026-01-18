@@ -48,68 +48,60 @@ SHEET_ID = os.getenv("SHEET_ID")
 EXA_API_KEY = os.getenv("EXA_API_KEY")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openai/gpt-4o-mini")
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
-DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
 SERVICE_ACCOUNT_PATH = os.getenv("SERVICE_ACCOUNT_PATH", "./service_account.json")
 
 # =============================================================================
-# MULTI-MODEL PROVIDER FRAMEWORK
+# SUPPORTED MODELS (all via OpenRouter)
 # =============================================================================
 
-# Supported providers and their models
-LLM_PROVIDERS = {
-    "openrouter": {
-        "name": "OpenRouter",
-        "base_url": "https://openrouter.ai/api/v1",
-        "env_key": "OPENROUTER_API_KEY",
-        "default_model": "openai/gpt-4o-mini",
-        "models": [
-            "openai/gpt-4o",
-            "openai/gpt-4o-mini",
-            "anthropic/claude-3.5-sonnet",
-            "anthropic/claude-3-opus",
-            "anthropic/claude-3-haiku",
-            "google/gemini-pro-1.5",
-            "meta-llama/llama-3.1-70b-instruct",
-        ],
-        "headers": {
-            "HTTP-Referer": "https://newstoviews.app",
-            "X-Title": "NewsToViews-ArtifactHunter-v2",
-        }
-    },
-    "deepseek": {
-        "name": "DeepSeek",
-        "base_url": "https://api.deepseek.com",
-        "env_key": "DEEPSEEK_API_KEY",
-        "default_model": "deepseek-chat",
-        "models": [
-            "deepseek-chat",         # DeepSeek-V3 (general purpose)
-            "deepseek-reasoner",     # DeepSeek-R1 (reasoning)
-        ],
-        "headers": {}
-    }
+# All models accessible through OpenRouter with a single API key
+AVAILABLE_MODELS = {
+    # OpenAI
+    "gpt-4o": "openai/gpt-4o",
+    "gpt-4o-mini": "openai/gpt-4o-mini",
+    "gpt-4-turbo": "openai/gpt-4-turbo",
+
+    # Anthropic Claude
+    "claude-sonnet": "anthropic/claude-3.5-sonnet",
+    "claude-opus": "anthropic/claude-3-opus",
+    "claude-haiku": "anthropic/claude-3-haiku",
+
+    # DeepSeek (via OpenRouter)
+    "deepseek": "deepseek/deepseek-chat",
+    "deepseek-chat": "deepseek/deepseek-chat",
+    "deepseek-reasoner": "deepseek/deepseek-r1",
+    "deepseek-r1": "deepseek/deepseek-r1",
+
+    # Google
+    "gemini": "google/gemini-pro-1.5",
+    "gemini-pro": "google/gemini-pro-1.5",
+    "gemini-flash": "google/gemini-flash-1.5",
+
+    # Meta Llama
+    "llama": "meta-llama/llama-3.1-70b-instruct",
+    "llama-70b": "meta-llama/llama-3.1-70b-instruct",
+    "llama-405b": "meta-llama/llama-3.1-405b-instruct",
+
+    # Mistral
+    "mistral": "mistralai/mistral-large",
+    "mixtral": "mistralai/mixtral-8x22b-instruct",
 }
 
-def get_provider_from_model(model_spec: str) -> tuple:
+def resolve_model(model_spec: str) -> str:
     """
-    Parse model specification and return (provider, model).
+    Resolve model shorthand to full OpenRouter model ID.
 
-    Formats supported:
-    - "deepseek:deepseek-chat" -> ("deepseek", "deepseek-chat")
-    - "openrouter:anthropic/claude-3.5-sonnet" -> ("openrouter", "anthropic/claude-3.5-sonnet")
-    - "deepseek-chat" -> ("deepseek", "deepseek-chat")  # Auto-detect
-    - "anthropic/claude-3.5-sonnet" -> ("openrouter", "anthropic/claude-3.5-sonnet")  # Default
+    Examples:
+        "deepseek" -> "deepseek/deepseek-chat"
+        "claude-sonnet" -> "anthropic/claude-3.5-sonnet"
+        "anthropic/claude-3.5-sonnet" -> "anthropic/claude-3.5-sonnet" (passthrough)
     """
-    if ":" in model_spec and model_spec.split(":")[0] in LLM_PROVIDERS:
-        parts = model_spec.split(":", 1)
-        return (parts[0], parts[1])
+    # If it's already a full model ID (contains /), pass through
+    if "/" in model_spec:
+        return model_spec
 
-    # Auto-detect provider from model name
-    if model_spec.startswith("deepseek"):
-        return ("deepseek", model_spec)
-
-    # Default to OpenRouter for slash-format models
-    return ("openrouter", model_spec)
+    # Look up shorthand
+    return AVAILABLE_MODELS.get(model_spec.lower(), model_spec)
 
 # =============================================================================
 # EXPANDED VIDEO PLATFORMS
@@ -339,61 +331,17 @@ def get_exa_client():
     return Exa(api_key=EXA_API_KEY)
 
 
-def get_llm_client(provider: str = "openrouter"):
-    """
-    Get LLM client for specified provider.
-
-    Args:
-        provider: "openrouter" or "deepseek"
-    """
+def get_llm_client():
+    """Get OpenRouter LLM client (supports all models with one API key)."""
     from openai import OpenAI
 
-    provider_config = LLM_PROVIDERS.get(provider, LLM_PROVIDERS["openrouter"])
-
-    if provider == "deepseek":
-        api_key = DEEPSEEK_API_KEY
-        if not api_key:
-            raise ValueError("DEEPSEEK_API_KEY not set in environment")
-    else:
-        api_key = OPENROUTER_API_KEY
-        if not api_key:
-            raise ValueError("OPENROUTER_API_KEY not set in environment")
+    if not OPENROUTER_API_KEY:
+        raise ValueError("OPENROUTER_API_KEY not set in environment")
 
     return OpenAI(
-        api_key=api_key,
-        base_url=provider_config["base_url"]
+        api_key=OPENROUTER_API_KEY,
+        base_url="https://openrouter.ai/api/v1"
     )
-
-
-def get_multi_llm_clients(providers: List[str] = None) -> Dict:
-    """
-    Get multiple LLM clients for ensemble/comparison mode.
-
-    Args:
-        providers: List of providers to initialize (default: all available)
-
-    Returns:
-        Dict mapping provider name to (client, default_model) tuple
-    """
-    clients = {}
-
-    if providers is None:
-        providers = []
-        if OPENROUTER_API_KEY:
-            providers.append("openrouter")
-        if DEEPSEEK_API_KEY:
-            providers.append("deepseek")
-
-    for provider in providers:
-        try:
-            client = get_llm_client(provider)
-            default_model = LLM_PROVIDERS[provider]["default_model"]
-            clients[provider] = (client, default_model)
-            print(f"  ✅ {LLM_PROVIDERS[provider]['name']} initialized (model: {default_model})")
-        except Exception as e:
-            print(f"  ⚠️ {provider}: {e}")
-
-    return clients
 
 # =============================================================================
 # ARTIFACT SEARCH - EXPANDED
@@ -896,7 +844,7 @@ def _get_quality_rating(score: float) -> str:
 # =============================================================================
 
 def assess_artifacts(llm, case_info: Dict, search_results: Dict,
-                     model: str = None, provider: str = "openrouter") -> Dict:
+                     model: str = None) -> Dict:
     """Use LLM to assess artifact availability with enhanced output format."""
 
     # Prepare search results summary
@@ -1002,29 +950,20 @@ Return this EXACT JSON structure:
 
 JSON only, no other text:"""
 
-    # Parse model spec to get provider and model
-    if model:
-        parsed_provider, use_model = get_provider_from_model(model)
-        provider = parsed_provider
-    else:
-        use_model = LLM_PROVIDERS[provider]["default_model"]
-
-    provider_config = LLM_PROVIDERS.get(provider, LLM_PROVIDERS["openrouter"])
+    # Resolve model shorthand to full OpenRouter model ID
+    use_model = resolve_model(model) if model else OPENROUTER_MODEL
 
     try:
-        # Build request kwargs
-        request_kwargs = {
-            "model": use_model,
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.1,  # Lower for more consistent output
-            "max_tokens": 2000,
-        }
-
-        # Add provider-specific headers (OpenRouter needs these)
-        if provider_config.get("headers"):
-            request_kwargs["extra_headers"] = provider_config["headers"]
-
-        response = llm.chat.completions.create(**request_kwargs)
+        response = llm.chat.completions.create(
+            model=use_model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.1,  # Lower for more consistent output
+            max_tokens=2000,
+            extra_headers={
+                "HTTP-Referer": "https://newstoviews.app",
+                "X-Title": "NewsToViews-ArtifactHunter-v2",
+            }
+        )
 
         content = response.choices[0].message.content.strip()
 
@@ -1038,7 +977,6 @@ JSON only, no other text:"""
 
         # Add metadata about which model was used
         result["_model_used"] = use_model
-        result["_provider"] = provider
 
         return result
 
@@ -1047,112 +985,9 @@ JSON only, no other text:"""
         print(f"      Raw content: {content[:500]}...")
         return {}
     except Exception as e:
-        print(f"      Assessment error ({provider}/{use_model}): {e}")
+        print(f"      Assessment error ({use_model}): {e}")
         return {}
 
-
-def assess_artifacts_ensemble(clients: Dict, case_info: Dict,
-                               search_results: Dict) -> Dict:
-    """
-    Run assessment with multiple models and combine results.
-
-    Uses all available providers to assess, then aggregates:
-    - Takes consensus on exists (YES if any says YES)
-    - Averages confidence scores
-    - Combines sources from all models
-    - Uses majority vote for overall_assessment
-    """
-    assessments = []
-
-    for provider, (client, default_model) in clients.items():
-        print(f"      Running {provider}...")
-        result = assess_artifacts(
-            client, case_info, search_results,
-            model=default_model, provider=provider
-        )
-        if result:
-            assessments.append(result)
-
-    if not assessments:
-        return {}
-
-    if len(assessments) == 1:
-        return assessments[0]
-
-    # Combine assessments
-    combined = {
-        "defendant": case_info.get("defendant", "Unknown"),
-        "jurisdiction": case_info.get("jurisdiction", "Unknown"),
-        "_ensemble": True,
-        "_models_used": [a.get("_model_used", "unknown") for a in assessments],
-    }
-
-    # Combine artifact assessments
-    artifact_types = ["interrogation", "bodycam", "court", "call_911", "discovery_docs"]
-
-    for atype in artifact_types:
-        exists_votes = []
-        qualities = []
-        all_sources = []
-        all_notes = []
-
-        for assessment in assessments:
-            artifact = assessment.get(atype, {})
-            if isinstance(artifact, dict):
-                exists_votes.append(artifact.get("exists", "NO"))
-                qualities.append(artifact.get("quality", "NONE"))
-                all_sources.extend(artifact.get("sources", []))
-                if artifact.get("notes"):
-                    all_notes.append(artifact.get("notes"))
-
-        # Consensus: YES if any model says YES
-        if "YES" in exists_votes:
-            consensus_exists = "YES"
-        elif "MAYBE" in exists_votes:
-            consensus_exists = "MAYBE"
-        else:
-            consensus_exists = "NO"
-
-        # Best quality from any model
-        quality_order = ["FULL", "EXCELLENT", "EXTENSIVE", "GOOD", "PARTIAL",
-                         "CLIPS", "ADEQUATE", "LIMITED", "MARGINAL", "POOR", "NONE"]
-        best_quality = "NONE"
-        for q in quality_order:
-            if any(qu.upper() == q for qu in qualities):
-                best_quality = q
-                break
-
-        combined[atype] = {
-            "exists": consensus_exists,
-            "quality": best_quality,
-            "sources": list(set(all_sources))[:5],  # Dedupe and limit
-            "notes": " | ".join(all_notes[:2]) if all_notes else ""
-        }
-
-    # Overall assessment - majority vote
-    overall_votes = [a.get("overall_assessment", "INSUFFICIENT") for a in assessments]
-    vote_counts = {}
-    for vote in overall_votes:
-        vote_counts[vote] = vote_counts.get(vote, 0) + 1
-    combined["overall_assessment"] = max(vote_counts, key=vote_counts.get)
-
-    # Average confidence
-    confidences = [a.get("confidence", 0.5) for a in assessments]
-    combined["confidence"] = sum(confidences) / len(confidences)
-
-    # Combine red flags
-    all_flags = []
-    for a in assessments:
-        all_flags.extend(a.get("red_flags", []))
-    combined["red_flags"] = list(set(all_flags))[:5]
-
-    # Combine recommendations
-    all_recs = []
-    for a in assessments:
-        all_recs.extend(a.get("recommended_manual_checks", []))
-    combined["recommended_manual_checks"] = list(set(all_recs))[:5]
-
-    return combined
 
 # =============================================================================
 # BENCHMARK TESTING
@@ -1241,7 +1076,7 @@ def run_benchmark(exa, llm, model: str = None) -> Dict:
 # MAIN PIPELINE
 # =============================================================================
 
-def run_artifact_hunter(limit: int = None, model: str = None, ensemble: bool = False):
+def run_artifact_hunter(limit: int = None, model: str = None):
     """Hunt for artifacts for cases in CASE ANCHOR."""
     print("=" * 60)
     print("NEWS → VIEWS: Artifact Hunter v2.0")
@@ -1250,34 +1085,16 @@ def run_artifact_hunter(limit: int = None, model: str = None, ensemble: bool = F
     if not check_credentials():
         return {"error": "Invalid credentials"}
 
-    # Determine provider and model
-    provider = "openrouter"
-    if model:
-        provider, use_model = get_provider_from_model(model)
-    else:
-        use_model = OPENROUTER_MODEL
-
-    if ensemble:
-        print("Mode: ENSEMBLE (multi-model)")
-    else:
-        print(f"Provider: {LLM_PROVIDERS.get(provider, {}).get('name', provider)}")
-        print(f"Model: {use_model}")
+    # Resolve model shorthand
+    use_model = resolve_model(model) if model else OPENROUTER_MODEL
+    print(f"Model: {use_model}")
 
     # Initialize
     print("\n[INIT] Connecting...")
     try:
         gc = get_gspread_client()
         exa = get_exa_client()
-
-        if ensemble:
-            llm_clients = get_multi_llm_clients()
-            if not llm_clients:
-                print("❌ No LLM providers available for ensemble mode")
-                return {"error": "No providers"}
-            llm = None  # Will use ensemble function
-        else:
-            llm_clients = None
-            llm = get_llm_client(provider)
+        llm = get_llm_client()
     except Exception as e:
         print(f"❌ Init failed: {e}")
         return {"error": str(e)}
@@ -1362,7 +1179,7 @@ def run_artifact_hunter(limit: int = None, model: str = None, ensemble: bool = F
                 platforms = set(r.get("platform", "Unknown") for r in sresults)
                 print(f"      - {stype}: {len(sresults)} ({', '.join(platforms)})")
 
-        # Assess with specified model (or ensemble)
+        # Assess with LLM
         case_info = {
             "defendant": defendant,
             "jurisdiction": jurisdiction,
@@ -1370,12 +1187,7 @@ def run_artifact_hunter(limit: int = None, model: str = None, ensemble: bool = F
             "incident_year": incident_year
         }
 
-        if ensemble and llm_clients:
-            print("    Running ensemble assessment...")
-            assessment = assess_artifacts_ensemble(llm_clients, case_info, search_results)
-        else:
-            assessment = assess_artifacts(llm, case_info, search_results,
-                                          model=use_model, provider=provider)
+        assessment = assess_artifacts(llm, case_info, search_results, model=use_model)
 
         if not assessment:
             stats["errors"] += 1
@@ -1453,90 +1265,65 @@ def run_artifact_hunter(limit: int = None, model: str = None, ensemble: bool = F
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Artifact Hunter v2.0 - Multi-model True Crime Research",
+        description="Artifact Hunter v2.0 - True Crime Research via OpenRouter",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Model specification formats:
-  --model deepseek-chat           # Auto-detected as DeepSeek
-  --model deepseek-reasoner       # DeepSeek R1 (reasoning)
-  --model anthropic/claude-3.5-sonnet  # OpenRouter (auto)
-  --model openrouter:openai/gpt-4o     # Explicit provider
-  --model deepseek:deepseek-chat       # Explicit provider
+Model shortcuts (all via OpenRouter - requires only OPENROUTER_API_KEY):
+  --model deepseek          # DeepSeek-V3 (cheap & fast)
+  --model deepseek-r1       # DeepSeek R1 (reasoning)
+  --model claude-sonnet     # Claude 3.5 Sonnet
+  --model gpt-4o            # GPT-4o
+  --model gemini            # Gemini Pro 1.5
+  --model llama             # Llama 3.1 70B
 
-Ensemble mode (uses all available providers):
-  --ensemble                      # Use both DeepSeek and OpenRouter
+Or use full model IDs:
+  --model deepseek/deepseek-chat
+  --model anthropic/claude-3.5-sonnet
 
 Examples:
-  python artifact_hunter.py --model deepseek-chat
-  python artifact_hunter.py --model anthropic/claude-3.5-sonnet
-  python artifact_hunter.py --ensemble --limit 5
-  python artifact_hunter.py --benchmark --model deepseek-reasoner
+  python artifact_hunter.py --model deepseek --limit 5
+  python artifact_hunter.py --model claude-sonnet
+  python artifact_hunter.py --benchmark --model gpt-4o
 """
     )
     parser.add_argument("--limit", type=int, help="Max cases to process")
     parser.add_argument("--check", action="store_true", help="Check credentials only")
     parser.add_argument("--benchmark", action="store_true", help="Run ground truth benchmark")
     parser.add_argument("--model", type=str,
-        help="Model to use (e.g., deepseek-chat, anthropic/claude-3.5-sonnet)")
-    parser.add_argument("--ensemble", action="store_true",
-        help="Use all available providers (DeepSeek + OpenRouter) and combine results")
+        help="Model shortcut or full ID (e.g., deepseek, claude-sonnet, openai/gpt-4o)")
     parser.add_argument("--list-models", action="store_true",
-        help="List available models and providers")
+        help="List available model shortcuts")
 
     args = parser.parse_args()
 
     if args.list_models:
-        print("\n📋 Available LLM Providers and Models")
-        print("=" * 50)
-        for provider, config in LLM_PROVIDERS.items():
-            api_key_name = config["env_key"]
-            has_key = bool(os.getenv(api_key_name))
-            status = "✅" if has_key else "❌"
-            print(f"\n{status} {config['name']} ({provider})")
-            print(f"   API Key: {api_key_name} {'(set)' if has_key else '(not set)'}")
-            print(f"   Default: {config['default_model']}")
-            print(f"   Models:")
-            for model in config["models"]:
-                print(f"     - {model}")
-        print()
+        print("\n📋 Available Models (all via OpenRouter)")
+        print("=" * 55)
+        print(f"{'Shortcut':<20} {'Full Model ID':<35}")
+        print("-" * 55)
+        for shortcut, full_id in sorted(AVAILABLE_MODELS.items()):
+            print(f"{shortcut:<20} {full_id:<35}")
+        print("\nRequires: OPENROUTER_API_KEY")
+        print("Get one at: https://openrouter.ai/keys")
         return
 
     if args.check:
         check_credentials()
-        print("\n📋 Provider Status:")
-        for provider, config in LLM_PROVIDERS.items():
-            api_key = os.getenv(config["env_key"])
-            status = "✅" if api_key else "❌"
-            print(f"  {status} {config['name']}: {config['env_key']}")
         return
 
     if args.benchmark:
         if not check_credentials():
             return
-        exa = get_exa_client()
-
-        if args.ensemble:
-            print("\n[INIT] Ensemble mode - initializing all providers...")
-            clients = get_multi_llm_clients()
-            if not clients:
-                print("❌ No LLM providers available")
-                return
-            # For benchmark, use first available provider
-            provider, (llm, default_model) = next(iter(clients.items()))
-            run_benchmark(exa, llm, model=args.model or default_model)
-        else:
-            provider = "openrouter"
-            if args.model:
-                provider, _ = get_provider_from_model(args.model)
-            try:
-                llm = get_llm_client(provider)
-            except ValueError as e:
-                print(f"❌ {e}")
-                return
-            run_benchmark(exa, llm, model=args.model)
+        try:
+            exa = get_exa_client()
+            llm = get_llm_client()
+        except ValueError as e:
+            print(f"❌ {e}")
+            return
+        run_benchmark(exa, llm, model=args.model)
         return
 
-    run_artifact_hunter(limit=args.limit, model=args.model, ensemble=args.ensemble)
+    run_artifact_hunter(limit=args.limit, model=args.model)
 
 
 if __name__ == "__main__":
