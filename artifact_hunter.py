@@ -22,23 +22,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Import jurisdiction-specific portal configuration
-try:
-    from jurisdiction_portals import (
-        get_jurisdiction_config,
-        get_search_domains_for_region,
-        get_agency_youtube_channels,
-        get_transparency_portals,
-        build_jurisdiction_queries,
-        is_florida_case,
-        has_court_video,
-        TRUE_CRIME_CHANNELS,
-        JURISDICTION_PORTALS,
-    )
-    HAS_JURISDICTION_DATA = True
-except ImportError:
-    HAS_JURISDICTION_DATA = False
-    print("⚠️  jurisdiction_portals.py not found - using generic searches")
+from jurisdiction_portals import (
+    build_jurisdiction_queries,
+    extract_domain,
+    get_agency_youtube_channels,
+    get_search_domains_for_region,
+    get_transparency_portals,
+)
 
 # =============================================================================
 # CONFIGURATION
@@ -47,9 +37,7 @@ except ImportError:
 SHEET_ID = os.getenv("SHEET_ID")
 EXA_API_KEY = os.getenv("EXA_API_KEY")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openai/gpt-4o-mini")
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
-DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-v3.2")
 SERVICE_ACCOUNT_PATH = os.getenv("SERVICE_ACCOUNT_PATH", "./service_account.json")
 
 # =============================================================================
@@ -399,48 +387,161 @@ def get_multi_llm_clients(providers: List[str] = None) -> Dict:
 # ARTIFACT SEARCH - EXPANDED
 # =============================================================================
 
-def search_artifacts(exa, defendant: str, jurisdiction: str,
-                     crime_type: str = "", custom_queries: List[str] = None,
-                     region_id: str = None, incident_year: str = None,
-                     victim_name: str = None, agency: str = None) -> Dict:
-    """Search for video artifacts using expanded sources and jurisdiction-specific queries."""
-    results = {
-        "interrogation": [],
-        "bodycam": [],
-        "court": [],
-        "call_911": [],
-        "discovery_docs": [],
-        "news": [],
-        "true_crime_coverage": [],
-        "other": []
+def extract_subreddit(url: str) -> str:
+    """Extract subreddit name from a Reddit URL."""
+    if not url:
+        return ""
+    match = re.search(r"reddit\.com/r/([^/]+)", url)
+    return match.group(1) if match else ""
+
+
+def check_for_video_links(text: str) -> bool:
+    """Check if text mentions video platforms."""
+    if not text:
+        return False
+    platforms = ("youtube.com", "youtu.be", "vimeo.com", "tiktok.com", "facebook.com")
+    return any(platform in text.lower() for platform in platforms)
+
+
+def search_reddit_cases(exa, defendant: str, jurisdiction: str) -> Dict:
+    """Search Reddit true crime communities for case discussion."""
+    results = {"discussions": [], "ama": [], "updates": []}
+
+    queries = [
+        f"site:reddit.com {defendant} case",
+        f"site:reddit.com {jurisdiction} murder {defendant}",
+    ]
+
+    for query in queries:
+        try:
+            search_results = exa.search(query=query, num_results=10)
+        except Exception as e:
+            print(f"      Reddit search error: {e}")
+            continue
+
+        for r in search_results.results:
+            post_data = {
+                "url": r.url,
+                "title": getattr(r, "title", ""),
+                "subreddit": extract_subreddit(r.url),
+                "has_video_links": check_for_video_links(getattr(r, "text", "")),
+                "upvotes": None,
+            }
+            results["discussions"].append(post_data)
+
+    return results
+
+
+def search_pacer(exa, defendant: str, jurisdiction: str, case_type: str = "cr") -> Dict:
+    """Search federal court records via CourtListener (free PACER data)."""
+    query = f"site:courtlistener.com {defendant} {jurisdiction} {case_type}"
+    case_data = {
+        "case_number": "",
+        "court": "",
+        "judge": "",
+        "filing_date": "",
+        "docket_entries": [],
+        "has_transcripts": False,
+        "has_exhibits": False,
+        "sources": [],
     }
 
+    try:
+        results = exa.search(query=query, num_results=10)
+    except Exception as e:
+        print(f"      PACER search error: {e}")
+        return case_data
+
+    for r in results.results:
+        case_data["sources"].append({
+            "url": r.url,
+            "title": getattr(r, "title", ""),
+            "score": getattr(r, "score", 0),
+        })
+
+    return case_data
+
+
+def search_artifacts(exa, defendant: str, jurisdiction: str,
+                     crime_type: str = "", custom_queries: List[str] = None,
+                     region_id: str = None, incident_year: str = None) -> Dict:
+    """Search for video artifacts."""
+    results = {
+        "body_cam": [],
+        "interrogation": [],
+        "court": [],
+        "other": [],
+        "portal": [],
+        "reddit": [],
+        "pacer": [],
+    }
+    
     defendant = defendant.split(",")[0].strip() if defendant else ""
     jurisdiction = str(jurisdiction).strip() if jurisdiction else ""
 
     if not defendant and not jurisdiction:
         return results
+    
+    video_domains = [
+        "youtube.com", "vimeo.com", "youtu.be", "facebook.com", "twitter.com"
+    ]
+    queries = []
+    
+    # Body cam
+    if jurisdiction:
+        queries.append(("body_cam", f"{jurisdiction} police body camera footage", video_domains))
+        queries.append(("body_cam", f"{jurisdiction} bodycam video incident", video_domains))
+    
+    # Interrogation
+    if defendant:
+        queries.append(("interrogation", f"{defendant} interrogation video police interview", video_domains))
+        queries.append(("interrogation", f"{defendant} confession interview recording", video_domains))
+    
+    # Court
+    if defendant:
+        queries.append(("court", f"{defendant} court video trial sentencing", video_domains))
+    
+    # Custom queries
+    for q in (custom_queries or [])[:3]:
+        queries.append(("other", q, video_domains))
 
-    # Build all queries based on methodology
-    queries = _build_comprehensive_queries(
-        defendant, jurisdiction, incident_year, victim_name, agency,
-        region_id, custom_queries
-    )
+    # Jurisdiction-aware queries
+    if region_id:
+        jurisdiction_queries = build_jurisdiction_queries(region_id, defendant, incident_year)
+        region_domains = get_search_domains_for_region(region_id)
+        for q in jurisdiction_queries.get("bodycam", []):
+            queries.append(("body_cam", q, list(set(video_domains + region_domains))))
+        for q in jurisdiction_queries.get("interrogation", []):
+            queries.append(("interrogation", q, list(set(video_domains + region_domains))))
+        for q in jurisdiction_queries.get("court", []):
+            queries.append(("court", q, list(set(video_domains + region_domains))))
+        for q in jurisdiction_queries.get("news", []):
+            queries.append(("portal", q, region_domains))
 
-    # Execute all searches
-    for qtype, query, domains in queries:
+        for channel in get_agency_youtube_channels(region_id)[:3]:
+            queries.append((
+                "body_cam",
+                f"{defendant} site:youtube.com {channel.get('name', '')}",
+                ["youtube.com"],
+            ))
+
+        for portal in get_transparency_portals(region_id):
+            domain = extract_domain(portal.get("url", ""))
+            if domain:
+                portal_query = f"site:{domain} {defendant} video"
+                queries.append(("portal", portal_query, [domain]))
+    
+    # Execute searches
+    for qtype, query, include_domains in queries:
         try:
-            search_kwargs = {
-                "query": query,
-                "type": "auto",
-                "num_results": 7,  # Increased for better coverage
-            }
-
-            if domains:
-                search_kwargs["include_domains"] = domains
-
-            search_results = exa.search(**search_kwargs)
-
+            search_results = exa.search(
+                query=query,
+                type="auto",
+                use_autoprompt=True,
+                num_results=5,
+                include_domains=include_domains,
+            )
+            
             for r in search_results.results:
                 results[qtype].append({
                     "url": r.url,
@@ -456,6 +557,13 @@ def search_artifacts(exa, defendant: str, jurisdiction: str,
         except Exception as e:
             print(f"      Search error: {e}")
 
+    if defendant or jurisdiction:
+        reddit_results = search_reddit_cases(exa, defendant, jurisdiction)
+        results["reddit"] = reddit_results.get("discussions", [])
+
+        pacer_results = search_pacer(exa, defendant, jurisdiction)
+        results["pacer"] = pacer_results.get("sources", [])
+    
     return results
 
 
@@ -917,6 +1025,12 @@ CASE INFORMATION:
 - Incident Year: {case_info.get('incident_year', 'Unknown')}
 
 SEARCH RESULTS:
+Body Cam: {json.dumps(search_results.get('body_cam', [])[:5], indent=2)}
+Interrogation: {json.dumps(search_results.get('interrogation', [])[:5], indent=2)}
+Court: {json.dumps(search_results.get('court', [])[:5], indent=2)}
+Portal/Local News: {json.dumps(search_results.get('portal', [])[:5], indent=2)}
+Reddit: {json.dumps(search_results.get('reddit', [])[:5], indent=2)}
+PACER/CourtListener: {json.dumps(search_results.get('pacer', [])[:5], indent=2)}
 
 INTERROGATION / POLICE INTERVIEW:
 {json.dumps(interrogation_results, indent=2) if interrogation_results else "No results"}
@@ -1325,33 +1439,35 @@ def run_artifact_hunter(limit: int = None, model: str = None, ensemble: bool = F
         crime_type = ""
         region_id = ""
         incident_year = ""
-
         if intake_id and intake_id in intake_by_id:
             intake_row = intake_by_id[intake_id]
             queries_str = str(intake_row.get("Artifact Queries", ""))
             if queries_str:
                 custom_queries = [q.strip() for q in queries_str.split("|") if q.strip()]
-            crime_type = str(intake_row.get("Crime Type", ""))
-            region_id = str(intake_row.get("Region_ID", "")).strip()
-            pub_year = str(intake_row.get("Pub_Year", "")).strip()
-            if pub_year and pub_year.isdigit():
-                incident_year = pub_year
-
-        # Show jurisdiction-specific info if available
-        if HAS_JURISDICTION_DATA and region_id:
-            config = get_jurisdiction_config(region_id)
-            if config:
-                print(f"    Region: {region_id} ({config.get('name', 'Unknown')}, {config.get('state', '')})")
-                portals = get_transparency_portals(region_id)
-                if portals:
-                    print(f"    📁 Transparency portals:")
-                    for p in portals[:2]:
-                        print(f"       - {p['name']}: {p['url']}")
-
-        # Search with expanded queries
+            crime_type = intake_row.get("Crime Type", "")
+            region_id = (
+                intake_row.get("Region_ID")
+                or intake_row.get("Region ID")
+                or intake_row.get("Region")
+                or ""
+            )
+            triage_json = intake_row.get("Triage JSON") or intake_row.get("Triage") or ""
+            if triage_json:
+                try:
+                    triage = json.loads(triage_json)
+                    incident_year = triage.get("incident_year", "")
+                except json.JSONDecodeError:
+                    incident_year = ""
+        
+        # Search
         search_results = search_artifacts(
-            exa, defendant, jurisdiction, crime_type, custom_queries,
-            region_id=region_id, incident_year=incident_year
+            exa,
+            defendant,
+            jurisdiction,
+            crime_type,
+            custom_queries,
+            region_id=region_id,
+            incident_year=incident_year,
         )
         total = sum(len(v) for v in search_results.values())
         print(f"    Found {total} potential sources")
