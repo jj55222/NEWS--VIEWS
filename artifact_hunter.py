@@ -76,6 +76,7 @@ AVAILABLE_MODELS = {
     # MiniMax (via OpenRouter)
     "minimax": "minimax/minimax-01",
     "minimax-01": "minimax/minimax-01",
+    "minimax-2": "minimax/minimax-01",  # MiniMax-01 is their latest flagship
 
     # Google
     "gemini": "google/gemini-pro-1.5",
@@ -380,31 +381,33 @@ def search_artifacts(exa, defendant: str, jurisdiction: str,
         region_id, custom_queries
     )
 
-    # Execute all searches
+    # Execute all searches with content fetching
     for qtype, query, domains in queries:
         try:
             search_kwargs = {
                 "query": query,
                 "type": "auto",
-                "num_results": 7,  # Increased for better coverage
+                "num_results": 5,  # Reduced since we're fetching content
+                "text": {"max_characters": 1500},  # Fetch page content
             }
 
             if domains:
                 search_kwargs["include_domains"] = domains
 
-            search_results = exa.search(**search_kwargs)
+            search_results = exa.search_and_contents(**search_kwargs)
 
             for r in search_results.results:
                 results[qtype].append({
                     "url": r.url,
                     "title": getattr(r, 'title', ''),
+                    "text": getattr(r, 'text', '')[:1500],  # Page content for LLM
                     "score": getattr(r, 'score', 0),
                     "query": query,
                     "source_type": _classify_source(r.url),
                     "platform": _get_platform(r.url)
                 })
 
-            time.sleep(0.25)
+            time.sleep(0.3)  # Slightly longer delay for content fetching
 
         except Exception as e:
             print(f"      Search error: {e}")
@@ -848,18 +851,36 @@ def _get_quality_rating(score: float) -> str:
 # LLM ASSESSMENT - ENHANCED
 # =============================================================================
 
+def _format_results_with_content(results: List[Dict], max_items: int = 5) -> str:
+    """Format search results with page content for LLM analysis."""
+    if not results:
+        return "No results found."
+
+    formatted = []
+    for i, r in enumerate(results[:max_items], 1):
+        entry = f"""
+[{i}] {r.get('title', 'No title')}
+    URL: {r.get('url', '')}
+    Platform: {r.get('platform', 'Unknown')}
+    Content: {r.get('text', 'No content available')[:800]}
+"""
+        formatted.append(entry)
+
+    return "\n".join(formatted)
+
+
 def assess_artifacts(llm, case_info: Dict, search_results: Dict,
                      model: str = None) -> Dict:
     """Use LLM to assess artifact availability with enhanced output format."""
 
-    # Prepare search results summary
-    interrogation_results = search_results.get('interrogation', [])[:7]
-    bodycam_results = search_results.get('bodycam', [])[:7]
-    court_results = search_results.get('court', [])[:7]
-    call_911_results = search_results.get('call_911', [])[:5]
-    discovery_results = search_results.get('discovery_docs', [])[:5]
-    news_results = search_results.get('news', [])[:5]
-    coverage_results = search_results.get('true_crime_coverage', [])[:5]
+    # Prepare search results with content
+    interrogation_results = search_results.get('interrogation', [])[:5]
+    bodycam_results = search_results.get('bodycam', [])[:5]
+    court_results = search_results.get('court', [])[:5]
+    call_911_results = search_results.get('call_911', [])[:4]
+    discovery_results = search_results.get('discovery_docs', [])[:4]
+    news_results = search_results.get('news', [])[:4]
+    coverage_results = search_results.get('true_crime_coverage', [])[:4]
 
     prompt = f"""You are an expert TRUE CRIME researcher assessing video artifact availability.
 
@@ -869,35 +890,37 @@ CASE INFORMATION:
 - Crime Type: {case_info.get('crime_type', 'Unknown')}
 - Incident Year: {case_info.get('incident_year', 'Unknown')}
 
-SEARCH RESULTS:
+SEARCH RESULTS WITH PAGE CONTENT:
+(Read the actual content below to verify if footage exists - don't just guess from titles)
 
-INTERROGATION / POLICE INTERVIEW:
-{json.dumps(interrogation_results, indent=2) if interrogation_results else "No results"}
+=== INTERROGATION / POLICE INTERVIEW ===
+{_format_results_with_content(interrogation_results)}
 
-BODYCAM / DASHCAM:
-{json.dumps(bodycam_results, indent=2) if bodycam_results else "No results"}
+=== BODYCAM / DASHCAM ===
+{_format_results_with_content(bodycam_results)}
 
-COURT / TRIAL VIDEO:
-{json.dumps(court_results, indent=2) if court_results else "No results"}
+=== COURT / TRIAL VIDEO ===
+{_format_results_with_content(court_results)}
 
-911 CALLS:
-{json.dumps(call_911_results, indent=2) if call_911_results else "No results"}
+=== 911 CALLS ===
+{_format_results_with_content(call_911_results)}
 
-DISCOVERY DOCUMENTS:
-{json.dumps(discovery_results, indent=2) if discovery_results else "No results"}
+=== DISCOVERY DOCUMENTS ===
+{_format_results_with_content(discovery_results)}
 
-NEWS COVERAGE:
-{json.dumps(news_results, indent=2) if news_results else "No results"}
+=== NEWS COVERAGE ===
+{_format_results_with_content(news_results)}
 
-EXISTING TRUE CRIME COVERAGE:
-{json.dumps(coverage_results, indent=2) if coverage_results else "No results"}
+=== EXISTING TRUE CRIME COVERAGE ===
+{_format_results_with_content(coverage_results)}
 
 ASSESSMENT INSTRUCTIONS:
-1. Verify URLs/titles match THIS SPECIFIC defendant and case
-2. For "exists": YES = confident match, MAYBE = possible match, NO = not found
-3. For "quality": FULL/EXCELLENT (complete footage), PARTIAL/GOOD (substantial), CLIPS/ADEQUATE (short), LIMITED/MARGINAL (minimal), NONE
-4. Prioritize official sources (police, courts, DA offices, news)
-5. Note any red flags (commentary videos, wrong case, dead links suspected)
+1. READ THE PAGE CONTENT to verify the footage actually exists for THIS SPECIFIC defendant
+2. Look for mentions of: video length, "full interrogation", "bodycam released", "trial footage"
+3. For "exists": YES = content confirms footage exists, MAYBE = mentioned but not confirmed, NO = not found
+4. For "quality": FULL/EXCELLENT (content mentions complete footage), PARTIAL/GOOD (clips available), LIMITED/MARGINAL (only described), NONE
+5. Prioritize official sources (police, courts, DA offices, news)
+6. Note red flags: wrong defendant, commentary-only, content doesn't match title
 
 DECISION TREE for overall_assessment:
 - 10+ min interrogation available? → Likely ENOUGH
