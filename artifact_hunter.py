@@ -67,9 +67,10 @@ AVAILABLE_MODELS = {
     "claude-haiku": "anthropic/claude-3-haiku",
 
     # DeepSeek (via OpenRouter)
-    "deepseek": "deepseek/deepseek-chat-v3-0324",
-    "deepseek-chat": "deepseek/deepseek-chat-v3-0324",
-    "deepseek-v3": "deepseek/deepseek-chat-v3-0324",
+    "deepseek": "deepseek/deepseek-v3.2-speciale",
+    "deepseek-chat": "deepseek/deepseek-v3.2-speciale",
+    "deepseek-v3": "deepseek/deepseek-v3.2-speciale",
+    "deepseek-v3.2": "deepseek/deepseek-v3.2-speciale",
     "deepseek-reasoner": "deepseek/deepseek-r1",
     "deepseek-r1": "deepseek/deepseek-r1",
 
@@ -81,9 +82,11 @@ AVAILABLE_MODELS = {
     "minimax-01": "minimax/minimax-01",  # Legacy
 
     # Google
-    "gemini": "google/gemini-pro-1.5",
+    "gemini": "google/gemini-3-flash-preview",
+    "gemini-flash": "google/gemini-3-flash-preview",
+    "gemini-3-flash": "google/gemini-3-flash-preview",
     "gemini-pro": "google/gemini-pro-1.5",
-    "gemini-flash": "google/gemini-flash-1.5",
+    "gemini-1.5": "google/gemini-pro-1.5",
 
     # Meta Llama
     "llama": "meta-llama/llama-3.1-70b-instruct",
@@ -1025,9 +1028,9 @@ JSON only, no other text:"""
 
 # Default models for ensemble comparison
 ENSEMBLE_MODELS = [
-    "deepseek/deepseek-chat-v3-0324",  # DeepSeek V3 - fast, cheap, good at structured output
-    "minimax/minimax-m2.1",             # MiniMax M2.1 - latest, optimized for agentic workflows
-    "openai/gpt-4o-mini",               # GPT-4o-mini - fast, reliable
+    "deepseek/deepseek-v3.2-speciale",  # DeepSeek V3.2 - fast, cheap, good at structured output
+    "minimax/minimax-m2.1",              # MiniMax M2.1 - latest, optimized for agentic workflows
+    "google/gemini-3-flash-preview",     # Gemini 3 Flash - fast, reliable
 ]
 
 def assess_artifacts_ensemble(llm, case_info: Dict, search_results: Dict,
@@ -1441,7 +1444,7 @@ Or use full model IDs:
   --model anthropic/claude-3.5-sonnet
 
 Ensemble mode (compares 3 models, combines results):
-  --ensemble                # Uses DeepSeek-V3 + MiniMax-M2.1 + GPT-4o-mini
+  --ensemble                # Uses DeepSeek-V3.2 + MiniMax-M2.1 + Gemini-3-Flash
 
 Examples:
   python artifact_hunter.py --model deepseek --limit 5
@@ -1456,7 +1459,7 @@ Examples:
     parser.add_argument("--model", type=str,
         help="Model shortcut or full ID (e.g., deepseek, claude-sonnet, openai/gpt-4o)")
     parser.add_argument("--ensemble", action="store_true",
-        help="Compare multiple models and combine results (DeepSeek-V3 + MiniMax-M2.1 + GPT-4o-mini)")
+        help="Compare multiple models and combine results (DeepSeek-V3.2 + MiniMax-M2.1 + Gemini-3-Flash)")
     parser.add_argument("--force", action="store_true",
         help="Re-assess cases even if they already have an assessment")
     parser.add_argument("--list-models", action="store_true",
