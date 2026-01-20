@@ -67,10 +67,15 @@ AVAILABLE_MODELS = {
     "claude-haiku": "anthropic/claude-3-haiku",
 
     # DeepSeek (via OpenRouter)
-    "deepseek": "deepseek/deepseek-chat",
-    "deepseek-chat": "deepseek/deepseek-chat",
+    "deepseek": "deepseek/deepseek-chat-v3-0324",
+    "deepseek-chat": "deepseek/deepseek-chat-v3-0324",
+    "deepseek-v3": "deepseek/deepseek-chat-v3-0324",
     "deepseek-reasoner": "deepseek/deepseek-r1",
     "deepseek-r1": "deepseek/deepseek-r1",
+
+    # MiniMax (via OpenRouter)
+    "minimax": "minimax/minimax-01",
+    "minimax-01": "minimax/minimax-01",
 
     # Google
     "gemini": "google/gemini-pro-1.5",
@@ -995,9 +1000,9 @@ JSON only, no other text:"""
 
 # Default models for ensemble comparison
 ENSEMBLE_MODELS = [
-    "deepseek/deepseek-chat",      # Fast, cheap, good at structured output
-    "anthropic/claude-3.5-sonnet", # Strong reasoning
-    "openai/gpt-4o-mini",          # Fast, reliable
+    "deepseek/deepseek-chat-v3-0324",  # DeepSeek V3 - fast, cheap, good at structured output
+    "minimax/minimax-01",               # MiniMax 2.1 - strong reasoning
+    "openai/gpt-4o-mini",               # GPT-4o-mini - fast, reliable
 ]
 
 def assess_artifacts_ensemble(llm, case_info: Dict, search_results: Dict,
@@ -1408,7 +1413,7 @@ Or use full model IDs:
   --model anthropic/claude-3.5-sonnet
 
 Ensemble mode (compares 3 models, combines results):
-  --ensemble                # Uses DeepSeek + Claude + GPT-4o-mini
+  --ensemble                # Uses DeepSeek-V3 + MiniMax-01 + GPT-4o-mini
 
 Examples:
   python artifact_hunter.py --model deepseek --limit 5
@@ -1423,7 +1428,7 @@ Examples:
     parser.add_argument("--model", type=str,
         help="Model shortcut or full ID (e.g., deepseek, claude-sonnet, openai/gpt-4o)")
     parser.add_argument("--ensemble", action="store_true",
-        help="Compare multiple models and combine results (DeepSeek + Claude + GPT-4o-mini)")
+        help="Compare multiple models and combine results (DeepSeek-V3 + MiniMax-01 + GPT-4o-mini)")
     parser.add_argument("--list-models", action="store_true",
         help="List available model shortcuts")
 
