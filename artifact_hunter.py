@@ -74,9 +74,11 @@ AVAILABLE_MODELS = {
     "deepseek-r1": "deepseek/deepseek-r1",
 
     # MiniMax (via OpenRouter)
-    "minimax": "minimax/minimax-01",
-    "minimax-01": "minimax/minimax-01",
-    "minimax-2": "minimax/minimax-01",  # MiniMax-01 is their latest flagship
+    "minimax": "minimax/minimax-m2.1",
+    "minimax-m2.1": "minimax/minimax-m2.1",
+    "minimax-m2": "minimax/minimax-m2",
+    "minimax-m1": "minimax/minimax-m1",
+    "minimax-01": "minimax/minimax-01",  # Legacy
 
     # Google
     "gemini": "google/gemini-pro-1.5",
@@ -1024,7 +1026,7 @@ JSON only, no other text:"""
 # Default models for ensemble comparison
 ENSEMBLE_MODELS = [
     "deepseek/deepseek-chat-v3-0324",  # DeepSeek V3 - fast, cheap, good at structured output
-    "minimax/minimax-01",               # MiniMax 2.1 - strong reasoning
+    "minimax/minimax-m2.1",             # MiniMax M2.1 - latest, optimized for agentic workflows
     "openai/gpt-4o-mini",               # GPT-4o-mini - fast, reliable
 ]
 
@@ -1439,7 +1441,7 @@ Or use full model IDs:
   --model anthropic/claude-3.5-sonnet
 
 Ensemble mode (compares 3 models, combines results):
-  --ensemble                # Uses DeepSeek-V3 + MiniMax-01 + GPT-4o-mini
+  --ensemble                # Uses DeepSeek-V3 + MiniMax-M2.1 + GPT-4o-mini
 
 Examples:
   python artifact_hunter.py --model deepseek --limit 5
@@ -1454,7 +1456,7 @@ Examples:
     parser.add_argument("--model", type=str,
         help="Model shortcut or full ID (e.g., deepseek, claude-sonnet, openai/gpt-4o)")
     parser.add_argument("--ensemble", action="store_true",
-        help="Compare multiple models and combine results (DeepSeek-V3 + MiniMax-01 + GPT-4o-mini)")
+        help="Compare multiple models and combine results (DeepSeek-V3 + MiniMax-M2.1 + GPT-4o-mini)")
     parser.add_argument("--force", action="store_true",
         help="Re-assess cases even if they already have an assessment")
     parser.add_argument("--list-models", action="store_true",
