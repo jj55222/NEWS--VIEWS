@@ -1198,7 +1198,7 @@ def run_benchmark(exa, llm, model: str = None) -> Dict:
 # MAIN PIPELINE
 # =============================================================================
 
-def run_artifact_hunter(limit: int = None, model: str = None, ensemble: bool = False):
+def run_artifact_hunter(limit: int = None, model: str = None, ensemble: bool = False, force: bool = False):
     """Hunt for artifacts for cases in CASE ANCHOR."""
     print("=" * 60)
     print("NEWS → VIEWS: Artifact Hunter v2.0")
@@ -1216,6 +1216,9 @@ def run_artifact_hunter(limit: int = None, model: str = None, ensemble: bool = F
             print(f"  - {m}")
     else:
         print(f"Model: {use_model}")
+
+    if force:
+        print("Force: Re-assessing all cases (ignoring existing assessments)")
 
     # Initialize
     print("\n[INIT] Connecting...")
@@ -1250,8 +1253,8 @@ def run_artifact_hunter(limit: int = None, model: str = None, ensemble: bool = F
     }
 
     for row_idx, case in enumerate(cases, start=2):
-        # Skip already assessed
-        if str(case.get("Footage Assessment", "")).strip():
+        # Skip already assessed (unless --force)
+        if not force and str(case.get("Footage Assessment", "")).strip():
             continue
 
         if limit and stats["processed"] >= limit:
@@ -1429,6 +1432,8 @@ Examples:
         help="Model shortcut or full ID (e.g., deepseek, claude-sonnet, openai/gpt-4o)")
     parser.add_argument("--ensemble", action="store_true",
         help="Compare multiple models and combine results (DeepSeek-V3 + MiniMax-01 + GPT-4o-mini)")
+    parser.add_argument("--force", action="store_true",
+        help="Re-assess cases even if they already have an assessment")
     parser.add_argument("--list-models", action="store_true",
         help="List available model shortcuts")
 
@@ -1461,7 +1466,7 @@ Examples:
         run_benchmark(exa, llm, model=args.model)
         return
 
-    run_artifact_hunter(limit=args.limit, model=args.model, ensemble=args.ensemble)
+    run_artifact_hunter(limit=args.limit, model=args.model, ensemble=args.ensemble, force=args.force)
 
 
 if __name__ == "__main__":
