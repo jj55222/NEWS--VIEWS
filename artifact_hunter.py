@@ -28,6 +28,17 @@ from jurisdiction_portals import (
     get_transparency_portals,
 )
 
+# Import credit-efficient search (falls back gracefully if YouTube API not configured)
+try:
+    from bodycam_sources import (
+        BodycamSourceRouter,
+        smart_artifact_search,
+        check_youtube_api,
+    )
+    BODYCAM_SOURCES_AVAILABLE = True
+except ImportError:
+    BODYCAM_SOURCES_AVAILABLE = False
+
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
@@ -323,15 +334,20 @@ JSON only:"""
 # MAIN PIPELINE
 # =============================================================================
 
-def run_artifact_hunter(limit: int = None):
+def run_artifact_hunter(limit: int = None, credit_efficient: bool = False,
+                        force_exa: bool = False):
     """Hunt for artifacts for cases in CASE ANCHOR."""
     print("=" * 60)
     print("NEWS → VIEWS: Artifact Hunter")
+    if credit_efficient:
+        print("MODE: Credit-Efficient (YouTube-first)")
+    else:
+        print("MODE: Standard (Exa-based)")
     print("=" * 60)
-    
+
     if not check_credentials():
         return {"error": "Invalid credentials"}
-    
+
     # Initialize
     print("\n[INIT] Connecting...")
     try:
@@ -339,8 +355,16 @@ def run_artifact_hunter(limit: int = None):
         exa = get_exa_client()
         llm = get_llm_client()
     except Exception as e:
-        print(f"❌ Init failed: {e}")
+        print(f"[ERROR] Init failed: {e}")
         return {"error": str(e)}
+
+    # Initialize credit-efficient router if requested
+    bodycam_router = None
+    if credit_efficient and BODYCAM_SOURCES_AVAILABLE:
+        bodycam_router = BodycamSourceRouter(exa_client=exa if force_exa else None)
+        print("[INIT] Credit-efficient pipeline enabled")
+    elif credit_efficient and not BODYCAM_SOURCES_AVAILABLE:
+        print("[WARN] bodycam_sources module not available, using standard mode")
     
     # Open sheet
     try:
@@ -402,17 +426,32 @@ def run_artifact_hunter(limit: int = None):
                 except json.JSONDecodeError:
                     incident_year = ""
         
-        # Search
-        search_results = search_artifacts(
-            exa,
-            defendant,
-            jurisdiction,
-            crime_type,
-            custom_queries,
-            region_id=region_id,
-            incident_year=incident_year,
-        )
-        total = sum(len(v) for v in search_results.values())
+        # Search - use credit-efficient or standard pipeline
+        if bodycam_router:
+            # Credit-efficient: YouTube-first, portal scraping, minimal Exa
+            search_results = smart_artifact_search(
+                defendant,
+                jurisdiction,
+                incident_year=incident_year,
+                region_id=region_id,
+                exa_client=exa if force_exa else None,
+            )
+            meta = search_results.get("_meta", {})
+            print(f"    YouTube queries: {meta.get('youtube_queries', 0)}")
+            print(f"    Exa queries: {meta.get('exa_queries', 0)}")
+            print(f"    Confidence: {meta.get('confidence', 'N/A')}")
+        else:
+            # Standard: Exa-based search
+            search_results = search_artifacts(
+                exa,
+                defendant,
+                jurisdiction,
+                crime_type,
+                custom_queries,
+                region_id=region_id,
+                incident_year=incident_year,
+            )
+        total = sum(len(v) for v in search_results.values() if isinstance(v, list))
         print(f"    Found {total} potential sources")
         
         # Assess
@@ -468,7 +507,12 @@ def run_artifact_hunter(limit: int = None):
     print(f"  BORDERLINE: {stats['borderline']}")
     print(f"  INSUFFICIENT: {stats['insufficient']}")
     print(f"Errors:       {stats['errors']}")
-    
+
+    # Credit-efficient stats
+    if bodycam_router:
+        print("\n--- Credit-Efficient Stats ---")
+        bodycam_router.print_stats()
+
     return stats
 
 # =============================================================================
@@ -479,14 +523,25 @@ def main():
     parser = argparse.ArgumentParser(description="Artifact Hunter")
     parser.add_argument("--limit", type=int, help="Max cases to process")
     parser.add_argument("--check", action="store_true", help="Check credentials only")
-    
+    parser.add_argument("--credit-efficient", "-ce", action="store_true",
+                        help="Use credit-efficient pipeline (YouTube-first, Exa fallback)")
+    parser.add_argument("--force-exa", action="store_true",
+                        help="Force Exa search even with credit-efficient mode")
+
     args = parser.parse_args()
-    
+
     if args.check:
         check_credentials()
+        if BODYCAM_SOURCES_AVAILABLE:
+            print("\n[Bodycam Sources]")
+            check_youtube_api()
         return
-    
-    run_artifact_hunter(limit=args.limit)
+
+    run_artifact_hunter(
+        limit=args.limit,
+        credit_efficient=args.credit_efficient,
+        force_exa=args.force_exa
+    )
 
 
 if __name__ == "__main__":
