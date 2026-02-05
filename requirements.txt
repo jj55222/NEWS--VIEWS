@@ -13,3 +13,6 @@ openai>=1.0.0
 # Utilities
 python-dotenv>=1.0.0
 requests>=2.28.0
+
+# YouTube transcript extraction
+youtube-transcript-api>=0.6.0
