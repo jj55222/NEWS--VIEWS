@@ -57,6 +57,7 @@ load_dotenv()
 
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
 EXA_API_KEY = os.getenv("EXA_API_KEY")
+VIMEO_ACCESS_TOKEN = os.getenv("VIMEO_ACCESS_TOKEN")  # Optional - for Vimeo API
 
 # Sunshine states with strong public records laws
 SUNSHINE_STATES = {
@@ -68,6 +69,278 @@ SUNSHINE_STATES = {
     "CO": {"name": "Colorado", "foia_strength": "good", "bodycam_law": True},
 }
 
+# =============================================================================
+# OFFICIAL PORTAL REGISTRY
+# Direct links to PD transparency portals, Vimeo channels, 911 archives
+# =============================================================================
+
+OFFICIAL_PORTALS = {
+    # FLORIDA - Strongest sunshine laws
+    "FL": {
+        "state_portal": "https://www.fdle.state.fl.us/",
+        "911_archives": [
+            "https://www.fdle.state.fl.us/FSAC/FSAC-Home.aspx",  # FL Statistical Analysis
+        ],
+        "agencies": {
+            "miami_dade_pd": {
+                "name": "Miami-Dade Police",
+                "vimeo": "https://vimeo.com/miamidadepd",
+                "transparency": "https://www.miamidade.gov/global/police/transparency.page",
+                "records_request": "https://www.miamidade.gov/global/service.page?Mduid_service=ser1529499498882149",
+            },
+            "broward_so": {
+                "name": "Broward Sheriff's Office",
+                "youtube": "https://www.youtube.com/@BrowardSheriff",
+                "transparency": "https://www.sheriff.org/FAQ/Pages/Public-Records-Request.aspx",
+            },
+            "orlando_pd": {
+                "name": "Orlando Police",
+                "vimeo": "https://vimeo.com/orlandopolice",
+                "transparency": "https://www.orlando.gov/Our-Government/Departments-Offices/Orlando-Police-Department",
+            },
+            "jacksonville_so": {
+                "name": "Jacksonville Sheriff's Office",
+                "youtube": "https://www.youtube.com/@JaxSheriff",
+                "vimeo": "https://vimeo.com/jaboringdystopia",
+                "transparency": "https://www.jaxsheriff.org/Resources/Records-and-Reports.aspx",
+            },
+            "tampa_pd": {
+                "name": "Tampa Police",
+                "vimeo": "https://vimeo.com/tampapd",
+                "transparency": "https://www.tampagov.net/police/programs/records",
+            },
+            "orange_county_so": {
+                "name": "Orange County Sheriff FL",
+                "youtube": "https://www.youtube.com/@OrangeCountySheriffsOffice",
+                "vimeo": "https://vimeo.com/oaboringdystopia",
+            },
+        },
+    },
+    # TEXAS
+    "TX": {
+        "state_portal": "https://www.dps.texas.gov/",
+        "911_archives": [],
+        "agencies": {
+            "houston_pd": {
+                "name": "Houston Police",
+                "youtube": "https://www.youtube.com/@HoustonPolice",
+                "vimeo": "https://vimeo.com/houstonpolice",
+                "transparency": "https://www.houstontx.gov/police/ois/",
+            },
+            "austin_pd": {
+                "name": "Austin Police",
+                "youtube": "https://www.youtube.com/@AustinPolice",
+                "vimeo": "https://vimeo.com/austinpolicedepartment",
+                "transparency": "https://www.austintexas.gov/department/police/transparency",
+            },
+            "dallas_pd": {
+                "name": "Dallas Police",
+                "vimeo": "https://vimeo.com/dallaspolice",
+                "transparency": "https://dallaspolice.net/resources/transparency",
+            },
+            "san_antonio_pd": {
+                "name": "San Antonio Police",
+                "vimeo": "https://vimeo.com/sanantoniopolice",
+                "transparency": "https://www.sanantonio.gov/SAPD/Open-Data-Initiative",
+            },
+            "fort_worth_pd": {
+                "name": "Fort Worth Police",
+                "vimeo": "https://vimeo.com/fortworthpd",
+                "transparency": "https://police.fortworthtexas.gov/transparency",
+            },
+        },
+    },
+    # ARIZONA
+    "AZ": {
+        "state_portal": "https://www.azdps.gov/",
+        "agencies": {
+            "phoenix_pd": {
+                "name": "Phoenix Police",
+                "youtube": "https://www.youtube.com/@PhoenixPolice",
+                "vimeo": "https://vimeo.com/phoenixpolice",
+                "transparency": "https://www.phoenix.gov/police/ois-videos",
+            },
+            "mesa_pd": {
+                "name": "Mesa Police",
+                "youtube": "https://www.youtube.com/@MesaPolice",
+                "vimeo": "https://vimeo.com/mesapolice",
+                "transparency": "https://www.mesaaz.gov/residents/police/about/transparency",
+            },
+            "tucson_pd": {
+                "name": "Tucson Police",
+                "vimeo": "https://vimeo.com/tucsonpolice",
+                "transparency": "https://www.tucsonaz.gov/police/transparency",
+            },
+            "maricopa_so": {
+                "name": "Maricopa County Sheriff",
+                "vimeo": "https://vimeo.com/mcso",
+            },
+        },
+    },
+    # CALIFORNIA
+    "CA": {
+        "state_portal": "https://oag.ca.gov/",
+        "sb1421_portal": "https://openjustice.doj.ca.gov/",  # SB 1421 requires disclosure
+        "agencies": {
+            "lapd": {
+                "name": "Los Angeles Police",
+                "youtube": "https://www.youtube.com/@LosAngelesPolice",
+                "vimeo": "https://vimeo.com/lapdonline",
+                "transparency": "https://www.lapdonline.org/office-of-the-chief-of-police/constitutional-policing/critical-incident-videos/",
+            },
+            "lasd": {
+                "name": "LA County Sheriff",
+                "vimeo": "https://vimeo.com/laaboringdystopia",
+                "transparency": "https://lasd.org/transparency/",
+            },
+            "sfpd": {
+                "name": "San Francisco Police",
+                "youtube": "https://www.youtube.com/@SFPDMedia",
+                "vimeo": "https://vimeo.com/sfpd",
+                "transparency": "https://www.sanfranciscopolice.org/your-sfpd/published-reports/officer-involved-shootings",
+            },
+            "san_diego_pd": {
+                "name": "San Diego Police",
+                "youtube": "https://www.youtube.com/@SanDiegoPD",
+                "vimeo": "https://vimeo.com/sdpd",
+                "transparency": "https://www.sandiego.gov/police/services/transparency",
+            },
+            "oakland_pd": {
+                "name": "Oakland Police",
+                "vimeo": "https://vimeo.com/oaklandpolice",
+                "transparency": "https://www.oaklandca.gov/topics/opd-transparency",
+            },
+            "sacramento_pd": {
+                "name": "Sacramento Police",
+                "vimeo": "https://vimeo.com/sacramentopolice",
+            },
+        },
+    },
+    # COLORADO
+    "CO": {
+        "state_portal": "https://cdps.colorado.gov/",
+        "agencies": {
+            "denver_pd": {
+                "name": "Denver Police",
+                "youtube": "https://www.youtube.com/@DenverPolice",
+                "vimeo": "https://vimeo.com/denverpolice",
+            },
+            "aurora_pd": {
+                "name": "Aurora Police",
+                "youtube": "https://www.youtube.com/@AuroraPolice",
+                "vimeo": "https://vimeo.com/aaboringdystopia",
+                "transparency": "https://www.auroragov.org/residents/public_safety/police/transparency",
+            },
+            "colorado_springs_pd": {
+                "name": "Colorado Springs Police",
+                "vimeo": "https://vimeo.com/cspd",
+                "transparency": "https://coloradosprings.gov/police-department/page/cspd-transparency",
+            },
+        },
+    },
+    # WASHINGTON
+    "WA": {
+        "state_portal": "https://www.wsp.wa.gov/",
+        "agencies": {
+            "seattle_pd": {
+                "name": "Seattle Police",
+                "youtube": "https://www.youtube.com/@SeattlePolice",
+                "vimeo": "https://vimeo.com/seaboringdystopia",
+                "transparency": "https://www.seattle.gov/police/information-and-data/videos",
+            },
+            "tacoma_pd": {
+                "name": "Tacoma Police",
+                "vimeo": "https://vimeo.com/tacomapd",
+            },
+            "spokane_pd": {
+                "name": "Spokane Police",
+                "vimeo": "https://vimeo.com/spokanepolice",
+            },
+        },
+    },
+    # GEORGIA
+    "GA": {
+        "state_portal": "https://gbi.georgia.gov/",
+        "agencies": {
+            "atlanta_pd": {
+                "name": "Atlanta Police",
+                "vimeo": "https://vimeo.com/atlantapd",
+            },
+            "dekalb_pd": {
+                "name": "DeKalb County Police",
+                "vimeo": "https://vimeo.com/dekalbpolice",
+            },
+        },
+    },
+    # NORTH CAROLINA
+    "NC": {
+        "state_portal": "https://www.ncsbi.gov/",
+        "agencies": {
+            "charlotte_pd": {
+                "name": "Charlotte-Mecklenburg Police",
+                "vimeo": "https://vimeo.com/cmpd",
+                "transparency": "https://www.charlottenc.gov/cmpd/transparency",
+            },
+            "raleigh_pd": {
+                "name": "Raleigh Police",
+                "vimeo": "https://vimeo.com/raleighpolice",
+            },
+        },
+    },
+}
+
+# =============================================================================
+# 911 CALL ARCHIVES & DISPATCH RECORDS
+# =============================================================================
+
+CALL_ARCHIVES = {
+    # Broadcastify/RadioReference archives (often have 911 dispatch)
+    "broadcastify": "https://www.broadcastify.com/archives/",
+    "radioreference": "https://www.radioreference.com/",
+
+    # State-specific 911 archives
+    "FL": {
+        "description": "Florida has strong 911 disclosure - request via agency",
+        "request_template": "Public Records Request for 911 audio related to [INCIDENT]",
+    },
+    "TX": {
+        "description": "Texas 911 calls are public record",
+        "request_template": "Open Records Request under Texas Public Information Act",
+    },
+
+    # Known 911 audio aggregators
+    "aggregators": [
+        "https://www.youtube.com/results?search_query={defendant}+911+call",
+        "https://www.youtube.com/results?search_query={defendant}+dispatch+audio",
+    ],
+}
+
+# =============================================================================
+# COURT RECORDS & TRIAL VIDEO
+# =============================================================================
+
+COURT_VIDEO_SOURCES = {
+    # National
+    "law_and_crime": "https://www.youtube.com/@LawCrimeNetwork",
+    "court_tv": "https://www.youtube.com/@CourtTV",
+    "courtroom_consequences": "https://www.youtube.com/@CourtroomConsequences",
+
+    # State court YouTube channels
+    "FL_courts": {
+        "description": "Florida courts often allow cameras",
+        "channels": [
+            "https://www.youtube.com/@FloridaCourtEDU",
+        ],
+    },
+    "AZ_courts": {
+        "maricopa": "https://www.youtube.com/@MaricopaCountySuperiorCourt",
+    },
+
+    # PACER for federal
+    "pacer": "https://pacer.uscourts.gov/",
+    "courtlistener": "https://www.courtlistener.com/",
+}
+
 # YouTube channels known for bodycam/interrogation content
 BODYCAM_CHANNELS = {
     "Police Activity": "UCXMYxKMh3prxnM_4kYZuB3g",
@@ -75,6 +348,8 @@ BODYCAM_CHANNELS = {
     "Bodycam Watch": "UC1-M3e7v9pspGv1Z9X5xSOw",
     "Law&Crime Network": "UCz8K1occVvDTYDfFo7N5EZw",
     "Court TV": "UC0HCL2RlnUr8Y6dT41HXHPg",
+    "Code Blue Cam": "UCRJiN8_gxJsHvLGTbNldpzw",
+    "Active Self Protection": "UCsE_m2z1NrvF2ImeNWh84mw",
 }
 
 INTERROGATION_CHANNELS = {
@@ -82,6 +357,8 @@ INTERROGATION_CHANNELS = {
     "Matt Orchard": "UC0v-e2O-hLfVzLx7gMxotZA",
     "Dreading": "UCoxRlpH0GbqwPiGK6_yPi_Q",
     "Explore With Us": "UC_3vJ9Ev9E0YTFe7UMJrq4Q",
+    "True Crime Loser": "UCJdCpPNp-yASoVG6rDyuQjw",
+    "Behavioral Panel": "UCxaSZAhTrtqxJfJNZJIo2TA",
 }
 
 # =============================================================================
@@ -129,9 +406,12 @@ class SearchResult:
     interrogation: List[VideoResult] = field(default_factory=list)
     court: List[VideoResult] = field(default_factory=list)
     news: List[VideoResult] = field(default_factory=list)
+    calls_911: List[VideoResult] = field(default_factory=list)  # 911 audio
+    portal_links: List[Dict] = field(default_factory=list)  # Direct portal URLs
     sources_tried: List[str] = field(default_factory=list)
     exa_queries_used: int = 0
     youtube_queries_used: int = 0
+    vimeo_queries_used: int = 0
     total_cost_estimate: float = 0.0
 
     @property
@@ -514,6 +794,299 @@ def youtube_interrogation_search(defendant: str) -> Tuple[List[VideoResult], int
         ))
 
     return results, queries_used
+
+
+# =============================================================================
+# VIMEO SEARCH
+# Many PDs upload bodycam footage to Vimeo (often compulsory for transparency)
+# =============================================================================
+
+def vimeo_search(query: str, max_results: int = 10) -> List[Dict]:
+    """
+    Search Vimeo for videos.
+
+    Can use:
+    1. Vimeo API (requires access token) - more reliable
+    2. Web scraping fallback - no auth needed but less reliable
+    """
+    results = []
+
+    # Method 1: Vimeo API (if token available)
+    if VIMEO_ACCESS_TOKEN:
+        try:
+            headers = {"Authorization": f"bearer {VIMEO_ACCESS_TOKEN}"}
+            params = {
+                "query": query,
+                "per_page": max_results,
+                "sort": "relevant",
+                "direction": "desc",
+            }
+            response = requests.get(
+                "https://api.vimeo.com/videos",
+                headers=headers,
+                params=params,
+                timeout=10
+            )
+            response.raise_for_status()
+            data = response.json()
+
+            for item in data.get("data", []):
+                duration = item.get("duration", 0)
+                results.append({
+                    "url": item.get("link", ""),
+                    "title": item.get("name", ""),
+                    "channel": item.get("user", {}).get("name", ""),
+                    "description": item.get("description", "")[:500] if item.get("description") else "",
+                    "duration_seconds": duration,
+                    "published_at": item.get("created_time", ""),
+                })
+            return results
+        except Exception as e:
+            print(f"    [WARN] Vimeo API error: {e}")
+
+    # Method 2: Build search URL for manual checking or Exa
+    # Vimeo's web search can be queried
+    search_url = f"https://vimeo.com/search?q={quote_plus(query)}"
+    print(f"    [Vimeo] Search URL: {search_url}")
+
+    return results
+
+
+def vimeo_pd_search(defendant: str, state: str = "") -> Tuple[List[VideoResult], int]:
+    """
+    Search Vimeo for police department uploads.
+
+    Many PDs use Vimeo for official bodycam releases.
+    """
+    results = []
+    queries_used = 0
+
+    # Build search queries
+    queries = [
+        f"{defendant} bodycam",
+        f"{defendant} police",
+        f"{defendant} body camera",
+    ]
+
+    if state:
+        queries.append(f"{defendant} {state} police bodycam")
+
+    for query in queries[:2]:  # Limit queries
+        print(f"    [Vimeo] Searching: {query}")
+        videos = vimeo_search(query, max_results=5)
+        queries_used += 1
+
+        for v in videos:
+            text = f"{v.get('title', '')} {v.get('description', '')}".lower()
+            # Check if it looks like official PD content
+            if any(kw in text for kw in ["police", "pd", "sheriff", "department", "bodycam", "body cam", "officer"]):
+                results.append(VideoResult(
+                    url=v.get("url", ""),
+                    title=v.get("title", ""),
+                    channel=v.get("channel", ""),
+                    duration_seconds=v.get("duration_seconds", 0),
+                    published_date=v.get("published_at", ""),
+                    description=v.get("description", "")[:500],
+                    source_type="vimeo",
+                    confidence="high" if "police" in v.get("channel", "").lower() else "medium",
+                    query_used=query,
+                ))
+
+        time.sleep(0.3)
+
+    return results, queries_used
+
+
+def get_official_portal_links(state: str, defendant: str = "") -> List[Dict]:
+    """
+    Get direct links to official portals for a state.
+
+    Returns actionable links where footage might be found.
+    """
+    links = []
+
+    if state not in OFFICIAL_PORTALS:
+        return links
+
+    state_info = OFFICIAL_PORTALS[state]
+
+    # State-level portal
+    if state_info.get("state_portal"):
+        links.append({
+            "type": "state_portal",
+            "name": f"{state} State Portal",
+            "url": state_info["state_portal"],
+            "action": "Search for case/defendant",
+        })
+
+    # California SB 1421 portal
+    if state_info.get("sb1421_portal"):
+        links.append({
+            "type": "sb1421",
+            "name": "CA OpenJustice (SB 1421)",
+            "url": state_info["sb1421_portal"],
+            "action": "Search for officer-involved incidents",
+        })
+
+    # Agency portals
+    for agency_id, agency in state_info.get("agencies", {}).items():
+        if agency.get("transparency"):
+            links.append({
+                "type": "transparency",
+                "name": agency["name"],
+                "url": agency["transparency"],
+                "action": f"Search for {defendant}" if defendant else "Browse releases",
+            })
+        if agency.get("vimeo"):
+            links.append({
+                "type": "vimeo",
+                "name": f"{agency['name']} Vimeo",
+                "url": agency["vimeo"],
+                "action": f"Search for {defendant}" if defendant else "Browse videos",
+            })
+        if agency.get("youtube"):
+            links.append({
+                "type": "youtube",
+                "name": f"{agency['name']} YouTube",
+                "url": agency["youtube"],
+                "action": f"Search for {defendant}" if defendant else "Browse videos",
+            })
+
+    return links
+
+
+def search_911_calls(defendant: str, jurisdiction: str = "") -> Tuple[List[VideoResult], List[Dict]]:
+    """
+    Search for 911 call audio.
+
+    Returns:
+    - VideoResult list for found audio on YouTube
+    - List of portal links for direct requests
+    """
+    results = []
+    portal_links = []
+
+    # YouTube search for 911 calls
+    queries = [
+        f'"{defendant}" 911 call',
+        f'"{defendant}" 911 audio',
+        f'"{defendant}" emergency call dispatch',
+    ]
+
+    for query in queries[:2]:
+        print(f"    [911] Searching YouTube: {query}")
+        videos = youtube_search(query, max_results=5)
+
+        for v in videos:
+            text = f"{v.get('title', '')} {v.get('description', '')}".lower()
+            if any(kw in text for kw in ["911", "dispatch", "emergency call", "operator"]):
+                results.append(VideoResult(
+                    url=v["url"],
+                    title=v.get("title", ""),
+                    channel=v.get("channel", ""),
+                    duration_seconds=v.get("duration_seconds", 0),
+                    published_date=v.get("published_at", ""),
+                    description=v.get("description", "")[:500],
+                    source_type="youtube_911",
+                    confidence="high" if "911" in v.get("title", "").lower() else "medium",
+                    query_used=query,
+                ))
+
+        time.sleep(0.3)
+
+    # Add portal links for requesting 911 audio
+    portal_links.append({
+        "type": "911_request",
+        "name": "Broadcastify Archives",
+        "url": CALL_ARCHIVES["broadcastify"],
+        "action": "Search dispatch recordings by date/location",
+    })
+
+    return results, portal_links
+
+
+def comprehensive_search(defendant: str, jurisdiction: str, state: str = "",
+                         incident_year: str = "") -> Dict:
+    """
+    Comprehensive search across ALL available sources.
+
+    Order of operations:
+    1. YouTube (free, high volume)
+    2. Vimeo (free, official PD uploads)
+    3. Official portal links (free, direct sources)
+    4. 911 call search (free)
+    5. Exa (paid, last resort)
+
+    Returns dict with all findings organized by type.
+    """
+    findings = {
+        "bodycam": [],
+        "interrogation": [],
+        "court": [],
+        "911_calls": [],
+        "portal_links": [],
+        "sources_checked": [],
+        "queries_used": {"youtube": 0, "vimeo": 0, "exa": 0},
+    }
+
+    print(f"\n{'='*60}")
+    print(f"COMPREHENSIVE SEARCH: {defendant}")
+    print(f"Jurisdiction: {jurisdiction}")
+    print(f"State: {state or 'Unknown'}")
+    print(f"{'='*60}")
+
+    # 1. YouTube - Bodycam
+    print("\n[1/5] YouTube Bodycam Search...")
+    bc_results, bc_queries = youtube_bodycam_search(defendant, jurisdiction)
+    findings["bodycam"].extend(bc_results)
+    findings["queries_used"]["youtube"] += bc_queries
+    findings["sources_checked"].append("youtube_bodycam")
+    print(f"    Found: {len(bc_results)} bodycam videos")
+
+    # 2. YouTube - Interrogation
+    print("\n[2/5] YouTube Interrogation Search...")
+    int_results, int_queries = youtube_interrogation_search(defendant)
+    findings["interrogation"].extend(int_results)
+    findings["queries_used"]["youtube"] += int_queries
+    findings["sources_checked"].append("youtube_interrogation")
+    print(f"    Found: {len(int_results)} interrogation videos")
+
+    # 3. Vimeo - PD channels
+    print("\n[3/5] Vimeo PD Search...")
+    vimeo_results, vimeo_queries = vimeo_pd_search(defendant, state)
+    findings["bodycam"].extend(vimeo_results)
+    findings["queries_used"]["vimeo"] += vimeo_queries
+    findings["sources_checked"].append("vimeo")
+    print(f"    Found: {len(vimeo_results)} Vimeo videos")
+
+    # 4. Official Portal Links
+    print("\n[4/5] Gathering Official Portal Links...")
+    if state:
+        portal_links = get_official_portal_links(state, defendant)
+        findings["portal_links"].extend(portal_links)
+        print(f"    Found: {len(portal_links)} official portals to check")
+
+    # 5. 911 Calls
+    print("\n[5/5] Searching for 911 Calls...")
+    call_results, call_portals = search_911_calls(defendant, jurisdiction)
+    findings["911_calls"].extend(call_results)
+    findings["portal_links"].extend(call_portals)
+    findings["sources_checked"].append("911_search")
+    print(f"    Found: {len(call_results)} 911 call recordings")
+
+    # Summary
+    total_videos = len(findings["bodycam"]) + len(findings["interrogation"]) + len(findings["911_calls"])
+    print(f"\n{'='*60}")
+    print(f"SEARCH COMPLETE")
+    print(f"{'='*60}")
+    print(f"Total videos found: {total_videos}")
+    print(f"  - Bodycam: {len(findings['bodycam'])}")
+    print(f"  - Interrogation: {len(findings['interrogation'])}")
+    print(f"  - 911 Calls: {len(findings['911_calls'])}")
+    print(f"Portal links to check: {len(findings['portal_links'])}")
+    print(f"Queries used: YouTube={findings['queries_used']['youtube']}, Vimeo={findings['queries_used']['vimeo']}")
+
+    return findings
 
 
 # =============================================================================
