@@ -40,7 +40,10 @@ try:
         BodycamSourceRouter,
         youtube_search,
         calculate_bodycam_likelihood,
+        comprehensive_search,
+        get_official_portal_links,
         YOUTUBE_API_KEY,
+        OFFICIAL_PORTALS,
     )
     BODYCAM_SOURCES_AVAILABLE = True
 except ImportError:
@@ -456,84 +459,138 @@ def extract_case_details_basic(transcript: str) -> CaseDetails:
 # =============================================================================
 
 def verify_artifacts(case_details: CaseDetails,
-                     artifacts_mentioned: List[ArtifactMention]) -> List[VerificationResult]:
+                     artifacts_mentioned: List[ArtifactMention]) -> Tuple[List[VerificationResult], Dict]:
     """
-    For each artifact type mentioned in the video, try to locate it using our pipeline.
+    For each artifact type mentioned in the video, try to locate it using comprehensive search.
+
+    Uses ALL available sources:
+    - YouTube (bodycam channels, interrogation channels, general search)
+    - Vimeo (official PD uploads)
+    - Official transparency portals
+    - 911 call archives
+
+    Returns:
+        Tuple of (verification_results, full_search_findings)
     """
     if not BODYCAM_SOURCES_AVAILABLE:
         print("[WARN] bodycam_sources not available for verification")
-        return []
+        return [], {}
 
     results = []
-    router = BodycamSourceRouter()
+    all_findings = {}
 
     # Get defendant names to search
     defendants = case_details.defendant_names or ["unknown"]
     jurisdiction = case_details.jurisdiction or case_details.state or ""
+    state = case_details.state or ""
     year = case_details.incident_year or ""
 
     # Track which artifact types were mentioned
     mentioned_types = set(a.artifact_type for a in artifacts_mentioned)
 
+    # Count mentions per type
+    mention_counts = {}
+    for a in artifacts_mentioned:
+        mention_counts[a.artifact_type] = mention_counts.get(a.artifact_type, 0) + 1
+
     for defendant in defendants[:2]:  # Limit to first 2 defendants
         if defendant.lower() == "unknown":
             continue
 
-        print(f"\n[VERIFY] Searching for artifacts related to: {defendant}")
+        print(f"\n{'='*60}")
+        print(f"COMPREHENSIVE ARTIFACT VERIFICATION")
+        print(f"Defendant: {defendant}")
+        print(f"Jurisdiction: {jurisdiction}")
+        print(f"State: {state}")
+        print(f"Year: {year}")
+        print(f"{'='*60}")
 
-        # Run our search pipeline
-        search_result = router.search(defendant, jurisdiction, year)
+        # Run COMPREHENSIVE search (YouTube + Vimeo + Portals + 911)
+        findings = comprehensive_search(
+            defendant=defendant,
+            jurisdiction=jurisdiction,
+            state=state,
+            incident_year=year
+        )
+        all_findings[defendant] = findings
 
         # Check bodycam
         if "bodycam" in mentioned_types or "dashcam" in mentioned_types:
+            bc_count = mention_counts.get("bodycam", 0) + mention_counts.get("dashcam", 0)
+            found_videos = findings.get("bodycam", [])
             results.append(VerificationResult(
                 artifact_type="bodycam",
                 mentioned_in_video=True,
-                found_by_search=len(search_result.bodycam) > 0,
-                search_results=[v.to_dict() for v in search_result.bodycam[:3]],
-                notes=f"Found {len(search_result.bodycam)} results" if search_result.bodycam else "Not found via YouTube search",
+                found_by_search=len(found_videos) > 0,
+                search_results=[v.to_dict() if hasattr(v, 'to_dict') else v for v in found_videos[:5]],
+                notes=f"Mentioned {bc_count}x in video. Found {len(found_videos)} via YouTube+Vimeo" if found_videos else f"Mentioned {bc_count}x but not found online",
             ))
 
         # Check interrogation
         if "interrogation" in mentioned_types:
+            int_count = mention_counts.get("interrogation", 0)
+            found_videos = findings.get("interrogation", [])
             results.append(VerificationResult(
                 artifact_type="interrogation",
                 mentioned_in_video=True,
-                found_by_search=len(search_result.interrogation) > 0,
-                search_results=[v.to_dict() for v in search_result.interrogation[:3]],
-                notes=f"Found {len(search_result.interrogation)} results" if search_result.interrogation else "Not found via YouTube search",
-            ))
-
-        # Check court/trial footage
-        if "court" in mentioned_types:
-            # Do a specific court search
-            court_results = youtube_search(f'"{defendant}" trial court video', max_results=5)
-            found_court = [r for r in court_results if any(kw in r.get('title', '').lower()
-                          for kw in ['trial', 'court', 'sentencing', 'verdict'])]
-            results.append(VerificationResult(
-                artifact_type="court",
-                mentioned_in_video=True,
-                found_by_search=len(found_court) > 0,
-                search_results=found_court[:3],
-                notes=f"Found {len(found_court)} results" if found_court else "Not found via YouTube search",
+                found_by_search=len(found_videos) > 0,
+                search_results=[v.to_dict() if hasattr(v, 'to_dict') else v for v in found_videos[:5]],
+                notes=f"Mentioned {int_count}x in video. Found {len(found_videos)} via YouTube+Vimeo" if found_videos else f"Mentioned {int_count}x but not found online",
             ))
 
         # Check 911 calls
         if "911_call" in mentioned_types:
-            call_results = youtube_search(f'"{defendant}" 911 call', max_results=5)
-            found_calls = [r for r in call_results if '911' in r.get('title', '').lower()]
+            call_count = mention_counts.get("911_call", 0)
+            found_calls = findings.get("911_calls", [])
             results.append(VerificationResult(
                 artifact_type="911_call",
                 mentioned_in_video=True,
                 found_by_search=len(found_calls) > 0,
-                search_results=found_calls[:3],
-                notes=f"Found {len(found_calls)} results" if found_calls else "Not found via YouTube search",
+                search_results=[v.to_dict() if hasattr(v, 'to_dict') else v for v in found_calls[:5]],
+                notes=f"Mentioned {call_count}x in video. Found {len(found_calls)} recordings" if found_calls else f"Mentioned {call_count}x - check Broadcastify archives",
             ))
 
-    # Print router stats
-    router.print_stats()
+        # Check court/trial footage
+        if "court" in mentioned_types:
+            court_count = mention_counts.get("court", 0)
+            # Do a specific court search
+            print(f"\n[COURT] Searching for trial footage...")
+            court_results = youtube_search(f'"{defendant}" trial court video', max_results=5)
+            found_court = [r for r in court_results if any(kw in r.get('title', '').lower()
+                          for kw in ['trial', 'court', 'sentencing', 'verdict', 'hearing'])]
+            results.append(VerificationResult(
+                artifact_type="court",
+                mentioned_in_video=True,
+                found_by_search=len(found_court) > 0,
+                search_results=found_court[:5],
+                notes=f"Mentioned {court_count}x in video. Found {len(found_court)} court videos" if found_court else f"Mentioned {court_count}x - check Law&Crime/CourtTV",
+            ))
 
-    return results
+        # Check surveillance
+        if "surveillance" in mentioned_types:
+            surv_count = mention_counts.get("surveillance", 0)
+            print(f"\n[SURVEILLANCE] Searching for surveillance footage...")
+            surv_results = youtube_search(f'"{defendant}" surveillance footage cctv', max_results=5)
+            found_surv = [r for r in surv_results if any(kw in r.get('title', '').lower()
+                          for kw in ['surveillance', 'cctv', 'security', 'camera'])]
+            results.append(VerificationResult(
+                artifact_type="surveillance",
+                mentioned_in_video=True,
+                found_by_search=len(found_surv) > 0,
+                search_results=found_surv[:5],
+                notes=f"Mentioned {surv_count}x in video. Found {len(found_surv)} surveillance clips" if found_surv else f"Mentioned {surv_count}x but not found online",
+            ))
+
+        # Add portal links to check manually
+        portal_links = findings.get("portal_links", [])
+        if portal_links:
+            print(f"\n--- Official Portals to Check Manually ---")
+            for link in portal_links[:10]:
+                print(f"  [{link['type']}] {link['name']}")
+                print(f"    URL: {link['url']}")
+                print(f"    Action: {link['action']}")
+
+    return results, all_findings
 
 
 # =============================================================================
@@ -598,15 +655,19 @@ def analyze_video(url_or_id: str, verify: bool = True) -> AnalysisReport:
     print(f"    Crime: {report.case_details.crime_type or 'Unknown'}")
     print(f"    Summary: {report.case_details.case_summary or 'N/A'}")
 
-    # Step 5: Verify artifacts
+    # Step 5: Verify artifacts using COMPREHENSIVE search
     if verify and report.artifacts_mentioned:
-        print("\n[5/5] Verifying artifacts...")
-        report.verification_results = verify_artifacts(
+        print("\n[5/5] COMPREHENSIVE ARTIFACT VERIFICATION...")
+        print("    Searching: YouTube + Vimeo + Official Portals + 911 Archives")
+        report.verification_results, full_findings = verify_artifacts(
             report.case_details,
             report.artifacts_mentioned
         )
+        # Store full findings for detailed output
+        report._full_findings = full_findings
     else:
         print("\n[5/5] Skipping verification (no artifacts mentioned or --no-verify)")
+        report._full_findings = {}
 
     return report
 
@@ -628,40 +689,81 @@ def print_report(report: AnalysisReport):
     print(f"Year: {cd.incident_year or 'Unknown'}")
     print(f"Crime: {cd.crime_type or 'Unknown'}")
 
-    print(f"\n--- Artifacts Mentioned in Video ---")
+    print(f"\n--- Artifacts Mentioned in Video ({len(report.artifacts_mentioned)} total) ---")
     if report.artifacts_mentioned:
+        # Group by type
+        by_type = {}
         for a in report.artifacts_mentioned:
-            print(f"  [{a.timestamp}] {a.artifact_type.upper()}")
+            if a.artifact_type not in by_type:
+                by_type[a.artifact_type] = []
+            by_type[a.artifact_type].append(a)
+
+        for artifact_type, mentions in by_type.items():
+            print(f"\n  {artifact_type.upper()} ({len(mentions)} mentions):")
+            for a in mentions[:5]:  # Show first 5
+                keyword = f" [{a.keyword_matched}]" if a.keyword_matched else ""
+                print(f"    [{a.timestamp}]{keyword} \"{a.context[:50]}...\"")
+            if len(mentions) > 5:
+                print(f"    ... and {len(mentions) - 5} more")
     else:
         print("  None detected")
 
-    print(f"\n--- Verification Results ---")
+    print(f"\n--- Verification Results (Comprehensive Search) ---")
     if report.verification_results:
         for v in report.verification_results:
             status = "FOUND" if v.found_by_search else "NOT FOUND"
-            print(f"  {v.artifact_type.upper()}: {status}")
-            print(f"    {v.notes}")
+            status_icon = "[+]" if v.found_by_search else "[-]"
+            print(f"\n  {status_icon} {v.artifact_type.upper()}: {status}")
+            print(f"      {v.notes}")
             if v.search_results:
-                for r in v.search_results[:2]:
-                    title = r.get('title', 'Untitled')[:50]
+                print(f"      Top results:")
+                for r in v.search_results[:3]:
+                    title = r.get('title', 'Untitled')[:60]
                     url = r.get('url', '')
-                    print(f"      - {title}")
-                    print(f"        {url}")
+                    duration = r.get('duration_seconds', 0)
+                    dur_str = f" ({duration//60}:{duration%60:02d})" if duration else ""
+                    print(f"        - {title}{dur_str}")
+                    print(f"          {url}")
     else:
         print("  No verification performed")
 
+    # Portal links from comprehensive search
+    if hasattr(report, '_full_findings') and report._full_findings:
+        all_portals = []
+        for defendant, findings in report._full_findings.items():
+            all_portals.extend(findings.get("portal_links", []))
+
+        if all_portals:
+            print(f"\n--- Official Portals to Check ({len(all_portals)}) ---")
+            seen = set()
+            for link in all_portals:
+                key = link.get('url', '')
+                if key in seen:
+                    continue
+                seen.add(key)
+                print(f"  [{link['type']}] {link['name']}")
+                print(f"    {link['url']}")
+
     # Summary
-    print(f"\n--- Summary ---")
+    print(f"\n{'='*60}")
+    print(f"SUMMARY")
+    print(f"{'='*60}")
     mentioned = len(set(a.artifact_type for a in report.artifacts_mentioned))
+    total_mentions = len(report.artifacts_mentioned)
     found = len([v for v in report.verification_results if v.found_by_search])
     total_verified = len(report.verification_results)
 
     print(f"Artifact types mentioned: {mentioned}")
-    print(f"Verified & found: {found}/{total_verified}")
+    print(f"Total artifact mentions: {total_mentions}")
+    print(f"Verified & found online: {found}/{total_verified}")
 
     if total_verified > 0:
         hit_rate = (found / total_verified) * 100
         print(f"Hit rate: {hit_rate:.0f}%")
+
+    if found < total_verified:
+        print(f"\nNOTE: {total_verified - found} artifact type(s) not found online.")
+        print("      Check the official portals listed above for direct access.")
 
 
 # =============================================================================
