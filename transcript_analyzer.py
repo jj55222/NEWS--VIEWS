@@ -62,15 +62,54 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-chat")
 
 # Artifact keywords to detect in transcripts
+# Expanded list to catch more variations
 ARTIFACT_KEYWORDS = {
-    "bodycam": ["bodycam", "body cam", "body camera", "body-worn camera", "bwc", "police footage"],
-    "dashcam": ["dashcam", "dash cam", "dash camera", "cruiser cam", "patrol car camera"],
-    "interrogation": ["interrogation", "interview room", "questioning", "confession", "detective interview"],
-    "surveillance": ["surveillance", "cctv", "security camera", "security footage", "store camera"],
-    "court": ["court", "trial", "testimony", "courtroom", "sentencing", "hearing", "verdict"],
-    "911_call": ["911", "nine one one", "emergency call", "dispatch", "dispatcher"],
-    "news": ["news footage", "news report", "local news", "breaking news"],
-    "documentary": ["documentary", "dateline", "48 hours", "20/20", "true crime"],
+    "bodycam": [
+        "bodycam", "body cam", "body camera", "body-worn camera", "body worn camera",
+        "bwc", "b.w.c.", "police footage", "officer's camera", "officers camera",
+        "police camera", "cop camera", "worn camera", "chest camera", "lapel camera",
+        "camera footage shows", "footage from the officer", "captured on camera",
+    ],
+    "dashcam": [
+        "dashcam", "dash cam", "dash camera", "cruiser cam", "patrol car camera",
+        "cruiser camera", "squad car camera", "police car camera", "in-car camera",
+        "vehicle camera", "car camera", "mvr", "mobile video",
+    ],
+    "interrogation": [
+        "interrogation", "interview room", "questioning", "confession", "confessed",
+        "detective interview", "police interview", "being questioned", "interview tape",
+        "interrogation room", "interrogation video", "admitted to", "told detectives",
+        "told police", "interview with detectives", "questioned by police",
+    ],
+    "surveillance": [
+        "surveillance", "cctv", "security camera", "security footage", "store camera",
+        "surveillance video", "surveillance footage", "caught on camera", "ring camera",
+        "doorbell camera", "home security", "business camera", "parking lot camera",
+        "gas station camera", "atm camera", "traffic camera", "camera shows",
+        "captured on video", "video shows", "footage shows", "seen on camera",
+    ],
+    "court": [
+        "court", "trial", "testimony", "courtroom", "sentencing", "hearing", "verdict",
+        "jury", "judge", "prosecutor", "defense attorney", "witness stand", "testif",
+        "arraignment", "plea", "convicted", "guilty", "not guilty", "deliberat",
+    ],
+    "911_call": [
+        "911", "nine one one", "emergency call", "dispatch", "dispatcher",
+        "911 call", "called 911", "911 recording", "emergency services",
+        "911 operator", "911 audio",
+    ],
+    "news": [
+        "news footage", "news report", "local news", "breaking news",
+        "news coverage", "reporter", "news station", "news clip",
+    ],
+    "documentary": [
+        "documentary", "dateline", "48 hours", "20/20", "true crime",
+        "investigation discovery", "forensic files",
+    ],
+    "photo_evidence": [
+        "crime scene photo", "autopsy photo", "evidence photo", "photograph",
+        "picture shows", "image shows", "photo evidence",
+    ],
 }
 
 
@@ -121,6 +160,7 @@ class ArtifactMention:
     context: str  # The text around the mention
     timestamp: str  # When in the video
     confidence: str = "medium"  # high, medium, low
+    keyword_matched: str = ""  # Which keyword triggered this match
 
 
 @dataclass
@@ -275,32 +315,50 @@ def get_video_metadata(video_id: str) -> Dict:
 
 def detect_artifacts_in_transcript(segments: List[TranscriptSegment],
                                    full_text: str) -> List[ArtifactMention]:
-    """Scan transcript for mentions of different artifact types."""
+    """Scan transcript for ALL mentions of different artifact types."""
     mentions = []
-    full_text_lower = full_text.lower()
+    seen_timestamps = set()  # Avoid duplicate entries for same timestamp
 
     for artifact_type, keywords in ARTIFACT_KEYWORDS.items():
         for keyword in keywords:
-            if keyword.lower() in full_text_lower:
-                # Find the segment(s) containing this keyword
-                for seg in segments:
-                    if keyword.lower() in seg.text.lower():
-                        # Get context (surrounding text)
-                        seg_idx = segments.index(seg)
-                        context_start = max(0, seg_idx - 1)
-                        context_end = min(len(segments), seg_idx + 2)
-                        context = " ".join(s.text for s in segments[context_start:context_end])
+            keyword_lower = keyword.lower()
+            # Find ALL segments containing this keyword
+            for seg in segments:
+                if keyword_lower in seg.text.lower():
+                    # Skip if we already recorded this timestamp for this artifact type
+                    key = (artifact_type, seg.timestamp)
+                    if key in seen_timestamps:
+                        continue
+                    seen_timestamps.add(key)
 
-                        mentions.append(ArtifactMention(
-                            artifact_type=artifact_type,
-                            context=context[:300],
-                            timestamp=seg.timestamp,
-                            confidence="high" if keyword.lower() in seg.text.lower() else "medium",
-                        ))
-                        break  # Only record first mention per keyword
-                break  # Only need one keyword match per type
+                    # Get context (surrounding text)
+                    seg_idx = segments.index(seg)
+                    context_start = max(0, seg_idx - 1)
+                    context_end = min(len(segments), seg_idx + 2)
+                    context = " ".join(s.text for s in segments[context_start:context_end])
+
+                    mentions.append(ArtifactMention(
+                        artifact_type=artifact_type,
+                        context=context[:300],
+                        timestamp=seg.timestamp,
+                        confidence="high",
+                        keyword_matched=keyword,  # Track which keyword matched
+                    ))
+
+    # Sort by timestamp
+    mentions.sort(key=lambda m: _timestamp_to_seconds(m.timestamp))
 
     return mentions
+
+
+def _timestamp_to_seconds(timestamp: str) -> float:
+    """Convert MM:SS or HH:MM:SS to seconds for sorting."""
+    parts = timestamp.split(":")
+    if len(parts) == 2:
+        return int(parts[0]) * 60 + int(parts[1])
+    elif len(parts) == 3:
+        return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
+    return 0
 
 
 def extract_case_details_with_llm(transcript: str, video_title: str = "") -> CaseDetails:
