@@ -10,7 +10,7 @@ Scoring factors:
   - Video platform URLs in article text                   +20
   - Jurisdiction/agency token matches                     +10
   - Lifecycle indicators (sentenced, convicted, etc.)     +5 each
-  - Florida region bonus (Sunshine Law)                   +10
+  - Sunshine state bonus (loose artifact access laws)      +10
   - Court has video capability                            +10
 """
 
@@ -20,7 +20,7 @@ from typing import Dict, List, Tuple
 from jurisdiction_portals import (
     get_jurisdiction_config,
     has_court_video,
-    is_florida_case,
+    is_sunshine_state,
 )
 
 # =============================================================================
@@ -66,8 +66,8 @@ LIFECYCLE_SCORE = 5
 # Jurisdiction/agency match bonus
 AGENCY_MATCH_SCORE = 10
 
-# Florida Sunshine Law bonus
-FLORIDA_BONUS = 10
+# Sunshine state bonus — states with loosest public records access for artifacts
+SUNSHINE_BONUS = 10
 
 # Court video capability bonus
 COURT_VIDEO_BONUS = 10
@@ -167,13 +167,13 @@ def evidence_prescore(article_text: str, article_url: str = "",
     all_matches.extend([f"lifecycle:{m}" for m in lifecycle_matches])
     breakdown["lifecycle"] = lifecycle_points
 
-    # --- Florida bonus (+10) ---
-    fl_bonus = 0
-    if region_id and is_florida_case(region_id):
-        fl_bonus = FLORIDA_BONUS
-        score += fl_bonus
-        all_matches.append("florida_sunshine")
-    breakdown["florida_bonus"] = fl_bonus
+    # --- Sunshine state bonus (+10) ---
+    sunshine_bonus = 0
+    if region_id and is_sunshine_state(region_id):
+        sunshine_bonus = SUNSHINE_BONUS
+        score += sunshine_bonus
+        all_matches.append("sunshine_state")
+    breakdown["sunshine_state"] = sunshine_bonus
 
     # --- Court video capability (+10) ---
     court_bonus = 0

@@ -770,6 +770,18 @@ def is_florida_case(region_id: str) -> bool:
     return config.get("state") == "FL"
 
 
+# States with the loosest public records access for law enforcement artifacts.
+# These jurisdictions make bodycam, dashcam, interrogation, and court footage
+# significantly easier to obtain than average.
+SUNSHINE_STATES = {"FL", "TX", "AZ", "WA", "OH", "GA", "UT"}
+
+
+def is_sunshine_state(region_id: str) -> bool:
+    """Check if region is in a sunshine state (loose artifact access laws)."""
+    config = get_jurisdiction_config(region_id)
+    return config.get("state", "") in SUNSHINE_STATES
+
+
 def has_court_video(region_id: str) -> bool:
     """Check if jurisdiction typically has court video."""
     config = get_jurisdiction_config(region_id)
