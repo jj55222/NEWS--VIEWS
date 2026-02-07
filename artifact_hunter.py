@@ -61,8 +61,8 @@ OPENROUTER_MODEL_ARTIFACT = os.getenv(
 ALLOW_EXA_FALLBACK = os.getenv("ALLOW_EXA_FALLBACK", "true").lower() == "true"
 
 # Caps
-MAX_RESULTS_PER_BUCKET = 6
-MAX_TOTAL_RESULTS_FOR_LLM = 25
+MAX_RESULTS_PER_BUCKET = 10
+MAX_TOTAL_RESULTS_FOR_LLM = 35
 
 # =============================================================================
 # VALIDATION
@@ -271,28 +271,46 @@ def _bucketize_result(result: Dict) -> str:
 def build_web_queries(defendant: str, jurisdiction: str,
                       incident_year: str = None,
                       custom_queries: List[str] = None) -> List[str]:
-    """Build 6-8 high-yield web queries for Brave Search."""
+    """Build web queries for Brave Search — broad discovery + targeted artifact queries.
+
+    Strategy: start with broad entity discovery (like old Exa approach)
+    to surface links, then add targeted artifact-specific queries.
+    """
     year_str = f" {incident_year}" if incident_year else ""
     queries = []
 
+    # --- Broad discovery (cast a wide net like Exa used to) ---
     if defendant and jurisdiction:
-        queries.append(f'"{defendant}" "{jurisdiction}" case number')
-        queries.append(f'"{defendant}" "{jurisdiction}" criminal complaint pdf')
-        queries.append(f'"{defendant}" probable cause affidavit "{jurisdiction}"')
-        queries.append(f'"{defendant}" docket "{jurisdiction}"')
-        queries.append(f'"{defendant}" arraignment "{jurisdiction}" video')
-        queries.append(f'"{defendant}" "press release" "{jurisdiction}"')
+        # General case discovery — unquoted so Brave can match partial
+        queries.append(f"{defendant} {jurisdiction} case")
+        queries.append(f"{defendant} {jurisdiction}{year_str}")
+        # Quoted defendant with loose context
+        queries.append(f'"{defendant}" {jurisdiction}')
     elif defendant:
-        queries.append(f'"{defendant}" criminal case docket')
-        queries.append(f'"{defendant}" probable cause affidavit')
-        queries.append(f'"{defendant}" bodycam OR "body camera"')
-        queries.append(f'"{defendant}" 911 call audio')
+        queries.append(f"{defendant} criminal case")
+        queries.append(f'"{defendant}" arrested')
 
-    # Add intake artifact queries (capped)
+    # --- Targeted artifact queries ---
+    name = defendant or ""
+    loc = jurisdiction.split(",")[0].strip() if jurisdiction else ""  # first part (city)
+
+    if name:
+        # Video artifacts
+        queries.append(f"{name} bodycam OR body camera OR dashcam")
+        queries.append(f"{name} interrogation OR confession video")
+        queries.append(f"{name} court OR trial OR sentencing video")
+        queries.append(f"{name} 911 call OR dispatch audio")
+        # Primary source documents
+        queries.append(f"{name} probable cause affidavit OR criminal complaint")
+        queries.append(f"{name} docket OR court records {loc}")
+        # News + press releases (often link to artifacts)
+        queries.append(f"{name} {loc} police press release OR press conference")
+
+    # Add intake artifact queries (from exa_pipeline triage)
     for q in (custom_queries or [])[:3]:
         queries.append(q)
 
-    return queries[:8]
+    return queries[:15]  # increased cap from 8 to 15
 
 
 def search_web(defendant: str, jurisdiction: str,
@@ -312,7 +330,7 @@ def search_web(defendant: str, jurisdiction: str,
     seen_urls = set()
 
     for query in queries:
-        hits = web_search_brave(query, num=5)
+        hits = web_search_brave(query, num=10)
 
         for hit in hits:
             url = hit.get("url", "")
