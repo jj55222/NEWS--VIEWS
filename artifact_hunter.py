@@ -106,6 +106,36 @@ def check_for_video_links(text: str) -> bool:
     return any(platform in text.lower() for platform in platforms)
 
 
+def _is_relevant(title: str, url: str, defendant: str) -> bool:
+    """Check if a search result is actually about this defendant.
+
+    The #1 problem with artifact hunting is contamination — generic agency
+    videos, unrelated cases, wrong jurisdiction hits. This filter requires
+    at least one defendant name token to appear in the title or URL.
+    """
+    if not defendant:
+        return True  # can't filter without a name
+
+    # Use the last name (most distinctive token)
+    name_parts = defendant.lower().split()
+    target = title.lower() + " " + url.lower()
+
+    # Match if any name part >= 3 chars appears in title/URL
+    return any(part in target for part in name_parts if len(part) >= 3)
+
+
+def _dedup_results(results_list: List[Dict]) -> List[Dict]:
+    """Remove duplicate URLs within a result bucket."""
+    seen = set()
+    deduped = []
+    for r in results_list:
+        url = r.get("url", "")
+        if url not in seen:
+            seen.add(url)
+            deduped.append(r)
+    return deduped
+
+
 def search_reddit_cases(exa, defendant: str, jurisdiction: str) -> Dict:
     """Search Reddit true crime communities for case discussion."""
     results = {"discussions": [], "ama": [], "updates": []}
@@ -168,7 +198,15 @@ def search_pacer(exa, defendant: str, jurisdiction: str, case_type: str = "cr") 
 def search_artifacts(exa, defendant: str, jurisdiction: str,
                      crime_type: str = "", custom_queries: List[str] = None,
                      region_id: str = None, incident_year: str = None) -> Dict:
-    """Search for video artifacts, primary-source documents, and dispatch audio."""
+    """Search for video artifacts, primary-source documents, and dispatch audio.
+
+    Key improvements over v1:
+    - Uses search_and_contents to get actual page text (not just URL/title)
+    - Relevance-filters results by defendant name to cut contamination
+    - Deduplicates URLs across queries
+    - Consolidates overlapping jurisdiction queries to reduce search count
+    - Caps results per bucket to limit token spend in LLM assessment
+    """
     results = {
         "body_cam": [],
         "interrogation": [],
@@ -190,130 +228,198 @@ def search_artifacts(exa, defendant: str, jurisdiction: str,
     video_domains = [
         "youtube.com", "vimeo.com", "youtu.be", "facebook.com", "twitter.com"
     ]
-    queries = []
 
     year_str = f" {incident_year}" if incident_year else ""
 
-    # --- Body cam: direct evidence retrieval language ---
-    if jurisdiction:
-        queries.append(("body_cam", f"{jurisdiction} bodycam release evidence file {defendant}", video_domains))
-        queries.append(("body_cam", f"{defendant} body camera footage released{year_str}", video_domains))
+    # Build queries — one focused query per bucket to reduce search count.
+    # Jurisdiction-aware queries are merged in rather than added as duplicates.
+    queries = []
 
-    # --- Interrogation: direct retrieval ---
     if defendant:
-        queries.append(("interrogation", f"{defendant} interrogation video full recording", video_domains))
-        queries.append(("interrogation", f"{defendant} police interview released", video_domains))
+        # Bodycam: one broad query covers defendant + bodycam + agency
+        queries.append(("body_cam", f'"{defendant}" bodycam OR "body camera" footage released{year_str}', video_domains))
 
-    # --- Court ---
-    if defendant:
-        queries.append(("court", f"{defendant} court video trial sentencing", video_domains))
+        # Interrogation
+        queries.append(("interrogation", f'"{defendant}" interrogation OR "police interview" video{year_str}', video_domains))
 
-    # --- Docket / primary-source documents ---
-    if defendant:
-        queries.append(("docket", f"{defendant} probable cause affidavit{year_str}", RECORDS_DOMAINS))
-        queries.append(("docket", f"{defendant} criminal complaint docket filing", RECORDS_DOMAINS))
-        queries.append(("docket", f"{defendant} arrest affidavit incident report", RECORDS_DOMAINS))
-    if defendant and jurisdiction:
-        queries.append(("docket", f"{defendant} {jurisdiction} case number criminal docket", RECORDS_DOMAINS))
+        # Court
+        queries.append(("court", f'"{defendant}" trial OR sentencing court video{year_str}', video_domains))
 
-    # --- 911 / Dispatch audio ---
-    if defendant:
-        queries.append(("dispatch", f"{defendant} 911 call audio released{year_str}", DISPATCH_DOMAINS + video_domains))
-        queries.append(("dispatch", f"{defendant} dispatch audio emergency call", DISPATCH_DOMAINS + video_domains))
+        # Docket — target records domains
+        queries.append(("docket", f'"{defendant}" probable cause affidavit OR criminal complaint{year_str}', RECORDS_DOMAINS))
+        queries.append(("docket", f'"{defendant}" docket OR "case number" OR "arrest affidavit"', RECORDS_DOMAINS))
 
-    # Custom queries
-    for q in (custom_queries or [])[:3]:
-        queries.append(("other", q, video_domains))
+        # 911 / Dispatch
+        queries.append(("dispatch", f'"{defendant}" 911 call OR dispatch audio{year_str}', DISPATCH_DOMAINS + video_domains))
 
-    # Jurisdiction-aware queries
+    # Jurisdiction-aware queries (only the most targeted ones)
     if region_id:
         jurisdiction_queries = build_jurisdiction_queries(region_id, defendant, incident_year)
         region_domains = get_search_domains_for_region(region_id)
-        for q in jurisdiction_queries.get("bodycam", []):
-            queries.append(("body_cam", q, list(set(video_domains + region_domains))))
-        for q in jurisdiction_queries.get("interrogation", []):
-            queries.append(("interrogation", q, list(set(video_domains + region_domains))))
-        for q in jurisdiction_queries.get("court", []):
-            queries.append(("court", q, list(set(video_domains + region_domains))))
-        for q in jurisdiction_queries.get("docket", []):
-            queries.append(("docket", q, list(set(RECORDS_DOMAINS + region_domains))))
-        for q in jurisdiction_queries.get("dispatch", []):
-            queries.append(("dispatch", q, list(set(DISPATCH_DOMAINS + video_domains + region_domains))))
-        for q in jurisdiction_queries.get("news", []):
-            queries.append(("portal", q, region_domains))
 
-        for channel in get_agency_youtube_channels(region_id)[:3]:
+        # Pick the best jurisdiction-scoped query per bucket (first one)
+        for bucket, jq_key, domains in [
+            ("body_cam", "bodycam", list(set(video_domains + region_domains))),
+            ("docket", "docket", list(set(RECORDS_DOMAINS + region_domains))),
+            ("dispatch", "dispatch", list(set(DISPATCH_DOMAINS + video_domains + region_domains))),
+        ]:
+            jq_list = jurisdiction_queries.get(jq_key, [])
+            if jq_list:
+                queries.append((bucket, jq_list[0], domains))
+
+        # One agency YouTube channel search
+        for channel in get_agency_youtube_channels(region_id)[:1]:
             queries.append((
                 "body_cam",
-                f"{defendant} site:youtube.com {channel.get('name', '')}",
+                f'"{defendant}" site:youtube.com {channel.get("name", "")}',
                 ["youtube.com"],
             ))
 
-        for portal in get_transparency_portals(region_id):
+        # Portal searches (capped at 1)
+        for portal in get_transparency_portals(region_id)[:1]:
             domain = extract_domain(portal.get("url", ""))
             if domain:
-                queries.append(("portal", f"site:{domain} {defendant} evidence release", [domain]))
+                queries.append(("portal", f'site:{domain} "{defendant}"', [domain]))
 
-    # Execute searches
+        # News (capped at 1)
+        for q in jurisdiction_queries.get("news", [])[:1]:
+            queries.append(("portal", q, region_domains))
+
+    # Custom queries from intake triage
+    for q in (custom_queries or [])[:2]:
+        queries.append(("other", q, video_domains))
+
+    # ---- Execute searches with content retrieval ----
+    seen_urls = set()
+    total_searches = 0
+
     for qtype, query, include_domains in queries:
         try:
-            search_results = exa.search(
+            search_results = exa.search_and_contents(
                 query=query,
                 type="auto",
-                num_results=5,
+                num_results=3,
+                text={"max_characters": 800},
                 include_domains=include_domains,
             )
 
             for r in search_results.results:
+                url = r.url
+                title = getattr(r, 'title', '')
+
+                # Skip duplicate URLs across buckets
+                if url in seen_urls:
+                    continue
+                seen_urls.add(url)
+
+                # Relevance filter: is this result actually about our defendant?
+                if not _is_relevant(title, url, defendant):
+                    continue
+
+                snippet = (getattr(r, 'text', '') or '')[:500]
+
                 results[qtype].append({
-                    "url": r.url,
-                    "title": getattr(r, 'title', ''),
+                    "url": url,
+                    "title": title,
                     "score": getattr(r, 'score', 0),
-                    "query": query
+                    "snippet": snippet,
+                    "query": query,
                 })
 
+            total_searches += 1
             time.sleep(0.3)
 
         except Exception as e:
-            print(f"      Search error: {e}")
+            print(f"      Search error ({qtype}): {e}")
 
+    # Reddit + PACER (kept lightweight — search only, no content fetch)
     if defendant or jurisdiction:
         reddit_results = search_reddit_cases(exa, defendant, jurisdiction)
-        results["reddit"] = reddit_results.get("discussions", [])
+        reddit_hits = reddit_results.get("discussions", [])
+        # Relevance-filter Reddit too
+        results["reddit"] = [r for r in reddit_hits
+                             if _is_relevant(r.get("title", ""), r.get("url", ""), defendant)]
 
         pacer_results = search_pacer(exa, defendant, jurisdiction)
-        results["pacer"] = pacer_results.get("sources", [])
+        pacer_hits = pacer_results.get("sources", [])
+        results["pacer"] = [r for r in pacer_hits
+                            if _is_relevant(r.get("title", ""), r.get("url", ""), defendant)]
+
+    # Dedup within each bucket
+    for key in results:
+        results[key] = _dedup_results(results[key])
+
+    # Log search efficiency
+    total_relevant = sum(len(v) for v in results.values())
+    print(f"    Searches: {total_searches} | Relevant results: {total_relevant} (of {len(seen_urls)} total)")
 
     return results
 
 
+def _slim_results(results_list: List[Dict], max_per_bucket: int = 3) -> List[Dict]:
+    """Trim results to the most relevant for LLM assessment.
+
+    Keeps only url, title, and snippet (truncated). Removes query/score
+    metadata that wastes tokens in the prompt.
+    """
+    slim = []
+    for r in results_list[:max_per_bucket]:
+        entry = {"url": r.get("url", ""), "title": r.get("title", "")}
+        snippet = r.get("snippet", "")
+        if snippet:
+            entry["text"] = snippet[:300]
+        slim.append(entry)
+    return slim
+
+
 def assess_artifacts(llm, case_info: Dict, search_results: Dict) -> Dict:
-    """Use LLM to assess artifact availability with depth metrics."""
-    prompt = f"""You are assessing primary-source evidence availability for a true crime case.
-This is NOT about news coverage — we need the raw artifacts: bodycam footage, interrogation
-recordings, 911 call audio, court filings, probable cause affidavits, and docket records.
+    """Use LLM to assess artifact availability with depth metrics.
+
+    Now receives actual page text snippets (not just URLs) so the LLM
+    can distinguish primary sources from news coverage.
+    """
+    prompt = f"""You are assessing primary-source evidence for a true crime case.
+We need RAW ARTIFACTS — not news coverage. Read the text snippets carefully.
 
 CASE:
 - Defendant: {case_info.get('defendant', 'Unknown')}
 - Jurisdiction: {case_info.get('jurisdiction', 'Unknown')}
 - Crime: {case_info.get('crime_type', 'Unknown')}
 
-SEARCH RESULTS:
-Body Cam: {json.dumps(search_results.get('body_cam', [])[:5], indent=2)}
-Interrogation: {json.dumps(search_results.get('interrogation', [])[:5], indent=2)}
-Court Video: {json.dumps(search_results.get('court', [])[:5], indent=2)}
-Docket/Records: {json.dumps(search_results.get('docket', [])[:5], indent=2)}
-911/Dispatch: {json.dumps(search_results.get('dispatch', [])[:5], indent=2)}
-Portal/Local News: {json.dumps(search_results.get('portal', [])[:5], indent=2)}
-Reddit: {json.dumps(search_results.get('reddit', [])[:5], indent=2)}
-PACER/CourtListener: {json.dumps(search_results.get('pacer', [])[:5], indent=2)}
+Each result below has a URL, title, and a text snippet from the actual page.
+Use the snippet to determine if this is a real primary source or just news.
 
-Evaluate each artifact type. For each, consider:
-- Is this the actual primary source (official release, court filing) or just news about it?
-- "official" = agency/court published it directly
-- "news" = news outlet reporting on or showing clips of it
-- "repost" = third-party reupload
-- "none" = not found
+BODY CAM:
+{json.dumps(_slim_results(search_results.get('body_cam', [])), indent=2)}
+
+INTERROGATION:
+{json.dumps(_slim_results(search_results.get('interrogation', [])), indent=2)}
+
+COURT VIDEO:
+{json.dumps(_slim_results(search_results.get('court', [])), indent=2)}
+
+DOCKET/RECORDS:
+{json.dumps(_slim_results(search_results.get('docket', [])), indent=2)}
+
+911/DISPATCH:
+{json.dumps(_slim_results(search_results.get('dispatch', [])), indent=2)}
+
+NEWS/PORTAL:
+{json.dumps(_slim_results(search_results.get('portal', [])), indent=2)}
+
+REDDIT:
+{json.dumps(_slim_results(search_results.get('reddit', [])), indent=2)}
+
+PACER/COURTLISTENER:
+{json.dumps(_slim_results(search_results.get('pacer', [])), indent=2)}
+
+For each artifact type, read the text snippet and determine:
+- "YES" = snippet confirms this IS the actual artifact (video upload, court filing, audio file)
+- "MAYBE" = snippet mentions the artifact exists but this link may be news about it
+- "NO" = not found, or snippet shows this is about a different person/case
+
+CRITICAL: If the snippet text is about a DIFFERENT person or case than {case_info.get('defendant', 'Unknown')},
+mark it NO regardless of the title.
 
 Return JSON:
 {{
@@ -334,14 +440,13 @@ Return JSON:
     "notes": "Brief explanation"
 }}
 
-Scoring guidance:
-- primary_source_score (0-100): How many results are actual primary sources vs news coverage?
-  100 = all official releases/filings, 0 = only news articles about the case
-- evidence_depth_score (0-100): Could a creator build an EWU/Dr. Insanity level video?
-  100 = bodycam + interrogation + 911 + court docs all available
+Scoring:
+- primary_source_score (0-100): % of results that are actual primary sources vs news
+- evidence_depth_score (0-100): Could a creator build an EWU-level video from these?
+  100 = bodycam + interrogation + 911 + docket all confirmed available
   50 = some primary sources but major gaps
   0 = only news coverage, no raw artifacts
-- artifact_types_found: count of distinct types with YES or MAYBE (bodycam, interrogation, court, docket, 911)
+- artifact_types_found: count of types with YES or MAYBE (max 5)
 
 JSON only:"""
 
