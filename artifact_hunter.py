@@ -8,10 +8,12 @@ Search backends: Brave Search (web), YouTube Data API (video),
 Vimeo API (video), with optional Exa fallback.
 
 Usage:
-    python artifact_hunter.py              # Process all unassessed cases
-    python artifact_hunter.py --limit 5    # Process max 5 cases
-    python artifact_hunter.py --dry-run    # Search + assess, don't write
-    python artifact_hunter.py --check      # Check credentials only
+    python artifact_hunter.py                       # Process all unassessed cases
+    python artifact_hunter.py --limit 5             # Process max 5 cases
+    python artifact_hunter.py --dry-run             # Search + assess, don't write
+    python artifact_hunter.py --check               # Check credentials only
+    python artifact_hunter.py --post-threshold-only # Re-score ENOUGH/BORDERLINE cases
+    python artifact_hunter.py --no-bundle           # Skip bundle JSON output
 """
 
 import os
@@ -41,6 +43,7 @@ from search_backends import (
     check_search_credentials,
     print_search_credential_status,
 )
+from bundle_scoring import score_case_bundle
 
 # =============================================================================
 # CONFIGURATION
@@ -697,12 +700,28 @@ JSON only:"""
 # MAIN PIPELINE
 # =============================================================================
 
-def run_artifact_hunter(limit: int = None, dry_run: bool = False):
-    """Hunt for artifacts for cases in CASE ANCHOR."""
+def run_artifact_hunter(limit: int = None, dry_run: bool = False,
+                        post_threshold_only: bool = False,
+                        emit_bundle: bool = True):
+    """Hunt for artifacts for cases in CASE ANCHOR.
+
+    Args:
+        limit: Max cases to process
+        dry_run: Search + assess but don't write to sheet
+        post_threshold_only: Only process cases already marked ENOUGH/BORDERLINE
+        emit_bundle: Write bundle candidate JSON to outputs/ (default True)
+    """
     print("=" * 60)
     print("NEWS → VIEWS: Artifact Hunter v3")
+    flags = []
     if dry_run:
-        print("   (DRY RUN — no sheet writes)")
+        flags.append("DRY RUN")
+    if post_threshold_only:
+        flags.append("POST-THRESHOLD ONLY")
+    if emit_bundle:
+        flags.append("EMIT BUNDLES")
+    if flags:
+        print(f"   ({' | '.join(flags)})")
     print("=" * 60)
 
     if not check_credentials():
@@ -741,10 +760,16 @@ def run_artifact_hunter(limit: int = None, dry_run: bool = False):
     }
 
     for row_idx, case in enumerate(cases, start=2):
-        # Skip already assessed
+        # Skip logic depends on mode
         assessment_val = str(case.get("Footage Assessment", "")).strip()
-        if assessment_val:
-            continue
+        if post_threshold_only:
+            # Only process cases already marked ENOUGH or BORDERLINE
+            if assessment_val not in ("ENOUGH", "BORDERLINE"):
+                continue
+        else:
+            # Normal mode: skip already assessed
+            if assessment_val:
+                continue
 
         if limit and stats["processed"] >= limit:
             print(f"\n[LIMIT] Reached {limit} cases")
@@ -820,16 +845,39 @@ def run_artifact_hunter(limit: int = None, dry_run: bool = False):
         primary = assessment.get("primary_source_score", 0)
         types_found = assessment.get("artifact_types_found", 0)
 
+        # ----- Bundle scoring (deterministic, no LLM) -----
+        bundle = score_case_bundle(
+            results=search_results,
+            telemetry=telemetry,
+            case_meta={
+                "defendant": defendant,
+                "jurisdiction": jurisdiction,
+                "incident_year": incident_year,
+                "region_id": region_id,
+            },
+            emit_files=emit_bundle,
+        )
+        bundle_score = bundle.get("bundle_score", 0)
+        bundle_status = bundle.get("status", "HOLD")
+        lane_coverage = bundle.get("component_scores", {}).get("coverage", 0)
+        bundle_gaps = ", ".join(bundle.get("gaps", []))
+
         # Telemetry line
         telem_str = (f"yt={telemetry['youtube_hits']} vim={telemetry['vimeo_hits']} "
                      f"brave={telemetry['brave_hits']} exa={'Y' if telemetry['exa_fallback_used'] else 'N'} "
                      f"llm={'Y' if assessment.get('notes', '').startswith('Auto') is False else 'N'}")
         print(f"    [{telem_str}]")
 
+        # Print results
+        icon = "✅" if overall == "ENOUGH" else "⚠️" if overall == "BORDERLINE" else "❌"
+        print(f"    {icon} {overall} (depth={depth}, primary={primary}, types={types_found})")
+        print(f"    📦 Bundle: {bundle_score:.0f} → {bundle_status} "
+              f"(coverage={lane_coverage:.0%}{', gaps: ' + bundle_gaps if bundle_gaps else ''})")
+        if bundle.get("output_path"):
+            print(f"    📁 {bundle['output_path']}")
+
         # Write to sheet (unless dry run)
         if dry_run:
-            print(f"    {'✅' if overall == 'ENOUGH' else '⚠️' if overall == 'BORDERLINE' else '❌'} "
-                  f"{overall} (depth={depth}, primary={primary}, types={types_found})")
             print(f"    [DRY RUN] Would write to row {row_idx}")
             stats["processed"] += 1
             if overall == "ENOUGH":
@@ -841,7 +889,7 @@ def run_artifact_hunter(limit: int = None, dry_run: bool = False):
             continue
 
         try:
-            # Columns G-K (7-11)
+            # Columns G-K (7-11): LLM assessment
             ws_anchor.update_cell(row_idx, 7, assessment.get("body_cam_exists", ""))
             ws_anchor.update_cell(row_idx, 8, assessment.get("interrogation_exists", ""))
             ws_anchor.update_cell(row_idx, 9, assessment.get("court_video_exists", ""))
@@ -856,23 +904,28 @@ def run_artifact_hunter(limit: int = None, dry_run: bool = False):
             ws_anchor.update_cell(row_idx, 10, "\n".join(all_sources[:8]))
             ws_anchor.update_cell(row_idx, 11, overall)
 
-            # Columns L-P (12-16)
+            # Columns L-P (12-16): artifact details
             ws_anchor.update_cell(row_idx, 12, assessment.get("docket_exists", ""))
             ws_anchor.update_cell(row_idx, 13, assessment.get("dispatch_911_exists", ""))
             ws_anchor.update_cell(row_idx, 14, str(primary))
             ws_anchor.update_cell(row_idx, 15, str(depth))
-            ws_anchor.update_cell(row_idx, 16, assessment.get("notes", ""))
+
+            # Column P (16): Bundle score + status
+            bundle_cell = f"{bundle_score:.0f} | {bundle_status}"
+            ws_anchor.update_cell(row_idx, 16, bundle_cell)
+
+            # Columns Q-S (17-19): Bundle details
+            ws_anchor.update_cell(row_idx, 17, f"{lane_coverage:.0%}")
+            ws_anchor.update_cell(row_idx, 18, bundle_gaps or "none")
+            ws_anchor.update_cell(row_idx, 19, bundle.get("output_path", ""))
 
             stats["processed"] += 1
             if overall == "ENOUGH":
                 stats["enough"] += 1
-                print(f"    ✅ ENOUGH (depth={depth}, primary={primary}, types={types_found})")
             elif overall == "BORDERLINE":
                 stats["borderline"] += 1
-                print(f"    ⚠️ BORDERLINE (depth={depth}, primary={primary}, types={types_found})")
             else:
                 stats["insufficient"] += 1
-                print(f"    ❌ INSUFFICIENT (depth={depth}, primary={primary}, types={types_found})")
 
         except Exception as e:
             print(f"    Sheet update error: {e}")
@@ -904,6 +957,10 @@ def main():
     parser.add_argument("--check", action="store_true", help="Check credentials only")
     parser.add_argument("--dry-run", action="store_true",
                         help="Search + assess but don't write to sheet")
+    parser.add_argument("--post-threshold-only", action="store_true",
+                        help="Only process cases already marked ENOUGH/BORDERLINE")
+    parser.add_argument("--no-bundle", action="store_true",
+                        help="Skip bundle candidate JSON output")
 
     args = parser.parse_args()
 
@@ -911,7 +968,12 @@ def main():
         check_credentials()
         return
 
-    run_artifact_hunter(limit=args.limit, dry_run=args.dry_run)
+    run_artifact_hunter(
+        limit=args.limit,
+        dry_run=args.dry_run,
+        post_threshold_only=args.post_threshold_only,
+        emit_bundle=not args.no_bundle,
+    )
 
 
 if __name__ == "__main__":
