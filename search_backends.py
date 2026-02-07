@@ -11,6 +11,7 @@ Basic retry with exponential backoff for 429/5xx errors.
 """
 
 import os
+import gzip
 import json
 import time
 import urllib.request
@@ -47,7 +48,11 @@ def _fetch_json(url: str, headers: Optional[Dict] = None) -> Optional[Dict]:
                     req.add_header(k, v)
 
             with urllib.request.urlopen(req, timeout=15) as resp:
-                return json.loads(resp.read().decode("utf-8"))
+                raw = resp.read()
+                # Decompress gzip if needed (Brave sends gzip when requested)
+                if raw[:2] == b'\x1f\x8b':
+                    raw = gzip.decompress(raw)
+                return json.loads(raw.decode("utf-8"))
 
         except urllib.error.HTTPError as e:
             if e.code in (429, 500, 502, 503) and attempt < MAX_RETRIES - 1:
