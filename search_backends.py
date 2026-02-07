@@ -2,7 +2,7 @@
 """
 NEWS → VIEWS: Search Backends
 
-Unified search interface for Google Programmable Search Engine (PSE),
+Unified search interface for Brave Search API (web),
 YouTube Data API, and Vimeo API. Each function returns a consistent
 result schema for easy integration with artifact_hunter.py.
 
@@ -23,8 +23,7 @@ from typing import Dict, List, Optional
 # CONFIGURATION
 # =============================================================================
 
-GOOGLE_PSE_API_KEY = os.getenv("GOOGLE_PSE_API_KEY", "")
-GOOGLE_PSE_CX = os.getenv("GOOGLE_PSE_CX", "")
+BRAVE_API_KEY = os.getenv("BRAVE_API_KEY", "")
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY", "")
 VIMEO_ACCESS_TOKEN = os.getenv("VIMEO_ACCESS_TOKEN", "")
 
@@ -70,41 +69,44 @@ def _fetch_json(url: str, headers: Optional[Dict] = None) -> Optional[Dict]:
 
 
 # =============================================================================
-# GOOGLE PROGRAMMABLE SEARCH ENGINE (PSE)
+# BRAVE SEARCH API (web)
 # =============================================================================
 
-def web_search_pse(query: str, num: int = 10) -> List[Dict]:
-    """Search the web using Google Programmable Search Engine.
+def web_search_brave(query: str, num: int = 10) -> List[Dict]:
+    """Search the web using Brave Search API.
 
     Args:
         query: Search query string
-        num: Number of results (max 10 per API call)
+        num: Number of results (max 20 per API call)
 
     Returns:
         List of result dicts with url, title, snippet, source.
     """
-    if not GOOGLE_PSE_API_KEY or not GOOGLE_PSE_CX:
+    if not BRAVE_API_KEY:
         return []
 
     params = urllib.parse.urlencode({
-        "key": GOOGLE_PSE_API_KEY,
-        "cx": GOOGLE_PSE_CX,
         "q": query,
-        "num": min(num, 10),
+        "count": min(num, 20),
     })
-    url = f"https://www.googleapis.com/customsearch/v1?{params}"
+    url = f"https://api.search.brave.com/res/v1/web/search?{params}"
+    headers = {
+        "Accept": "application/json",
+        "Accept-Encoding": "gzip",
+        "X-Subscription-Token": BRAVE_API_KEY,
+    }
 
-    data = _fetch_json(url)
+    data = _fetch_json(url, headers=headers)
     if not data:
         return []
 
     results = []
-    for item in data.get("items", []):
+    for item in data.get("web", {}).get("results", []):
         results.append({
-            "url": item.get("link", ""),
+            "url": item.get("url", ""),
             "title": item.get("title", ""),
-            "snippet": item.get("snippet", "")[:500],
-            "source": "pse",
+            "snippet": item.get("description", "")[:500],
+            "source": "brave",
         })
 
     return results
@@ -269,7 +271,7 @@ def check_search_credentials() -> Dict[str, bool]:
     Returns dict mapping backend name to availability.
     """
     return {
-        "pse": bool(GOOGLE_PSE_API_KEY and GOOGLE_PSE_CX),
+        "brave": bool(BRAVE_API_KEY),
         "youtube": bool(YOUTUBE_API_KEY),
         "vimeo": bool(VIMEO_ACCESS_TOKEN),
     }
@@ -281,7 +283,7 @@ def print_search_credential_status():
     for backend, available in status.items():
         icon = "✅" if available else "⚠️"
         label = {
-            "pse": "Google PSE (GOOGLE_PSE_API_KEY + GOOGLE_PSE_CX)",
+            "brave": "Brave Search API (BRAVE_API_KEY)",
             "youtube": "YouTube Data API (YOUTUBE_API_KEY)",
             "vimeo": "Vimeo API (VIMEO_ACCESS_TOKEN)",
         }[backend]

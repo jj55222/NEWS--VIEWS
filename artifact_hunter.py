@@ -4,7 +4,7 @@ NEWS → VIEWS: Artifact Hunter v3
 Searches for bodycam, interrogation, court footage, docket documents,
 911 dispatch audio, and primary-source records for PASS cases.
 
-Search backends: Google PSE (web), YouTube Data API (video),
+Search backends: Brave Search (web), YouTube Data API (video),
 Vimeo API (video), with optional Exa fallback.
 
 Usage:
@@ -35,7 +35,7 @@ from jurisdiction_portals import (
     RECORDS_DOMAINS,
 )
 from search_backends import (
-    web_search_pse,
+    web_search_brave,
     youtube_search,
     vimeo_search,
     check_search_credentials,
@@ -91,7 +91,7 @@ def check_credentials() -> bool:
 
     if not any(backends.values()) and not EXA_API_KEY:
         print("\n   ⚠️  No search backends configured. Set at least one of:")
-        print("      GOOGLE_PSE_API_KEY + GOOGLE_PSE_CX")
+        print("      BRAVE_API_KEY")
         print("      YOUTUBE_API_KEY")
         print("      EXA_API_KEY (fallback)")
         return False
@@ -243,10 +243,10 @@ def search_videos(defendant: str, jurisdiction: str,
 
 
 # =============================================================================
-# STEP 2: WEB RETRIEVAL (Google PSE)
+# STEP 2: WEB RETRIEVAL (Brave Search)
 # =============================================================================
 
-# Keywords used to classify PSE results into artifact buckets
+# Keywords used to classify web results into artifact buckets
 BUCKET_KEYWORDS = {
     "body_cam": ["body cam", "bodycam", "bwc", "body-worn", "dashcam", "dash cam"],
     "interrogation": ["interrogation", "interview", "confession"],
@@ -271,7 +271,7 @@ def _bucketize_result(result: Dict) -> str:
 def build_web_queries(defendant: str, jurisdiction: str,
                       incident_year: str = None,
                       custom_queries: List[str] = None) -> List[str]:
-    """Build 6-8 high-yield web queries for Google PSE."""
+    """Build 6-8 high-yield web queries for Brave Search."""
     year_str = f" {incident_year}" if incident_year else ""
     queries = []
 
@@ -298,21 +298,21 @@ def build_web_queries(defendant: str, jurisdiction: str,
 def search_web(defendant: str, jurisdiction: str,
                incident_year: str = None,
                custom_queries: List[str] = None) -> Dict[str, List[Dict]]:
-    """Search Google PSE for case IDs, docket docs, and press releases."""
+    """Search Brave for case IDs, docket docs, and press releases."""
     results = {
         "body_cam": [], "interrogation": [], "court": [],
         "docket": [], "dispatch": [], "other": [],
     }
 
     backends = check_search_credentials()
-    if not backends["pse"]:
+    if not backends["brave"]:
         return results
 
     queries = build_web_queries(defendant, jurisdiction, incident_year, custom_queries)
     seen_urls = set()
 
     for query in queries:
-        hits = web_search_pse(query, num=5)
+        hits = web_search_brave(query, num=5)
 
         for hit in hits:
             url = hit.get("url", "")
@@ -337,7 +337,7 @@ def search_web(defendant: str, jurisdiction: str,
 
 def search_exa_fallback(exa, defendant: str, jurisdiction: str,
                         incident_year: str = None) -> Dict[str, List[Dict]]:
-    """Run 1-2 Exa searches as semantic rescue when PSE/YouTube found nothing."""
+    """Run 1-2 Exa searches as semantic rescue when Brave/YouTube found nothing."""
     results = {
         "body_cam": [], "interrogation": [], "court": [],
         "docket": [], "dispatch": [], "other": [],
@@ -429,7 +429,7 @@ def search_artifacts(defendant: str, jurisdiction: str,
         "existing_sources_count": 0,
         "youtube_hits": 0,
         "vimeo_hits": 0,
-        "pse_hits": 0,
+        "brave_hits": 0,
         "exa_fallback_used": False,
         "exa_fallback_hits": 0,
     }
@@ -474,12 +474,12 @@ def search_artifacts(defendant: str, jurisdiction: str,
     )
     print(f"      Step 1: YouTube={telemetry['youtube_hits']} Vimeo={telemetry['vimeo_hits']}")
 
-    # ----- Step 2: Web retrieval (Google PSE) -----
+    # ----- Step 2: Web retrieval (Brave Search) -----
     web_results = search_web(defendant_clean, jurisdiction_clean,
                              incident_year, custom_queries)
     results = _merge_results(results, web_results)
-    telemetry["pse_hits"] = _count_results(web_results)
-    print(f"      Step 2: PSE={telemetry['pse_hits']}")
+    telemetry["brave_hits"] = _count_results(web_results)
+    print(f"      Step 2: Brave={telemetry['brave_hits']}")
 
     # ----- Step 3: Exa fallback (if still empty) -----
     if _count_results(results) < 3 and ALLOW_EXA_FALLBACK and exa:
@@ -804,7 +804,7 @@ def run_artifact_hunter(limit: int = None, dry_run: bool = False):
 
         # Telemetry line
         telem_str = (f"yt={telemetry['youtube_hits']} vim={telemetry['vimeo_hits']} "
-                     f"pse={telemetry['pse_hits']} exa={'Y' if telemetry['exa_fallback_used'] else 'N'} "
+                     f"brave={telemetry['brave_hits']} exa={'Y' if telemetry['exa_fallback_used'] else 'N'} "
                      f"llm={'Y' if assessment.get('notes', '').startswith('Auto') is False else 'N'}")
         print(f"    [{telem_str}]")
 
