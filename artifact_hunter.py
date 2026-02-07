@@ -477,6 +477,7 @@ def run_artifact_hunter(limit: int = None):
         
         # Update sheet
         try:
+            # Existing columns G-K (cols 7-11)
             ws_anchor.update_cell(row_idx, 7, assessment.get("body_cam_exists", ""))
             ws_anchor.update_cell(row_idx, 8, assessment.get("interrogation_exists", ""))
             ws_anchor.update_cell(row_idx, 9, assessment.get("court_video_exists", ""))
@@ -491,13 +492,19 @@ def run_artifact_hunter(limit: int = None):
             )
             ws_anchor.update_cell(row_idx, 10, "\n".join(all_sources[:8]))
 
-            # Overall assessment + depth summary
             overall = assessment.get("overall_assessment", "INSUFFICIENT")
+            ws_anchor.update_cell(row_idx, 11, overall)
+
+            # New columns L-P (cols 12-16) — appended, never shift existing
+            ws_anchor.update_cell(row_idx, 12, assessment.get("docket_exists", ""))
+            ws_anchor.update_cell(row_idx, 13, assessment.get("dispatch_911_exists", ""))
+            ws_anchor.update_cell(row_idx, 14, str(assessment.get("primary_source_score", 0)))
+            ws_anchor.update_cell(row_idx, 15, str(assessment.get("evidence_depth_score", 0)))
+            ws_anchor.update_cell(row_idx, 16, assessment.get("notes", ""))
+
             depth = assessment.get("evidence_depth_score", 0)
             primary = assessment.get("primary_source_score", 0)
             types_found = assessment.get("artifact_types_found", 0)
-            depth_summary = f"{overall} | depth:{depth} primary:{primary} types:{types_found}"
-            ws_anchor.update_cell(row_idx, 11, depth_summary)
 
             stats["processed"] += 1
             if overall == "ENOUGH":
