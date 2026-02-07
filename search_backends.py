@@ -145,18 +145,16 @@ def youtube_search(defendant: str, jurisdiction: str = "",
     city = jurisdiction.split(",")[0].strip() if jurisdiction else ""
 
     queries = [
-        # Broad discovery (like old Exa approach — surface all related videos)
+        # Broad discovery — surface all related videos
         f"{defendant} {city}" if city else f"{defendant}",
-        # Artifact-specific
+        # Top 3 artifact types
         f"{defendant} bodycam OR body camera OR dashcam{year_str}",
         f"{defendant} interrogation OR interview OR confession",
-        f"{defendant} trial OR sentencing OR court{juris_str}",
-        f"{defendant} 911 call OR dispatch OR police audio",
-        f"{defendant} arrest OR police{juris_str}",
+        f"{defendant} court OR trial OR sentencing{juris_str}",
     ]
 
-    # Add hint-based queries (agency names, crime type)
-    for hint in (hints or [])[:2]:
+    # Add hint-based queries only if we have room (agency names, crime type)
+    for hint in (hints or [])[:1]:
         queries.append(f"{defendant} {hint}")
 
     seen_ids = set()
@@ -168,7 +166,7 @@ def youtube_search(defendant: str, jurisdiction: str = "",
             "part": "snippet",
             "q": query,
             "type": "video",
-            "maxResults": 10,
+            "maxResults": 5,
             "order": "relevance",
         }
 
