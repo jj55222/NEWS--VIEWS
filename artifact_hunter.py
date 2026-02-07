@@ -419,9 +419,9 @@ def run_artifact_hunter(limit: int = None):
             print(f"\n[LIMIT] Reached {limit} cases")
             break
         
-        defendant = case.get("Defendant Name(s)", "").strip()
-        jurisdiction = case.get("Jurisdiction", "").strip()
-        intake_id = case.get("Intake_ID", "").strip()
+        defendant = str(case.get("Defendant Name(s)", "")).strip()
+        jurisdiction = str(case.get("Jurisdiction", "")).strip()
+        intake_id = str(case.get("Intake_ID", "")).strip()
         
         print(f"\n[{row_idx}] {defendant[:40]}...")
         print(f"    Jurisdiction: {jurisdiction}")
