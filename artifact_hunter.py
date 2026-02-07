@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 NEWS → VIEWS: Artifact Hunter
-Searches for body cam, interrogation, and court footage for PASS cases
+Searches for bodycam, interrogation, court footage, docket documents,
+911 dispatch audio, and primary-source records for PASS cases.
 
 Usage:
     python artifact_hunter.py              # Process all unassessed cases
@@ -26,6 +27,8 @@ from jurisdiction_portals import (
     get_agency_youtube_channels,
     get_search_domains_for_region,
     get_transparency_portals,
+    DISPATCH_DOMAINS,
+    RECORDS_DOMAINS,
 )
 
 # =============================================================================
@@ -165,42 +168,59 @@ def search_pacer(exa, defendant: str, jurisdiction: str, case_type: str = "cr") 
 def search_artifacts(exa, defendant: str, jurisdiction: str,
                      crime_type: str = "", custom_queries: List[str] = None,
                      region_id: str = None, incident_year: str = None) -> Dict:
-    """Search for video artifacts."""
+    """Search for video artifacts, primary-source documents, and dispatch audio."""
     results = {
         "body_cam": [],
         "interrogation": [],
         "court": [],
+        "docket": [],
+        "dispatch": [],
         "other": [],
         "portal": [],
         "reddit": [],
         "pacer": [],
     }
-    
+
     defendant = defendant.split(",")[0].strip() if defendant else ""
     jurisdiction = jurisdiction.strip() if jurisdiction else ""
-    
+
     if not defendant and not jurisdiction:
         return results
-    
+
     video_domains = [
         "youtube.com", "vimeo.com", "youtu.be", "facebook.com", "twitter.com"
     ]
     queries = []
-    
-    # Body cam
+
+    year_str = f" {incident_year}" if incident_year else ""
+
+    # --- Body cam: direct evidence retrieval language ---
     if jurisdiction:
-        queries.append(("body_cam", f"{jurisdiction} police body camera footage", video_domains))
-        queries.append(("body_cam", f"{jurisdiction} bodycam video incident", video_domains))
-    
-    # Interrogation
+        queries.append(("body_cam", f"{jurisdiction} bodycam release evidence file {defendant}", video_domains))
+        queries.append(("body_cam", f"{defendant} body camera footage released{year_str}", video_domains))
+
+    # --- Interrogation: direct retrieval ---
     if defendant:
-        queries.append(("interrogation", f"{defendant} interrogation video police interview", video_domains))
-        queries.append(("interrogation", f"{defendant} confession interview recording", video_domains))
-    
-    # Court
+        queries.append(("interrogation", f"{defendant} interrogation video full recording", video_domains))
+        queries.append(("interrogation", f"{defendant} police interview released", video_domains))
+
+    # --- Court ---
     if defendant:
         queries.append(("court", f"{defendant} court video trial sentencing", video_domains))
-    
+
+    # --- Docket / primary-source documents ---
+    if defendant:
+        queries.append(("docket", f"{defendant} probable cause affidavit{year_str}", RECORDS_DOMAINS))
+        queries.append(("docket", f"{defendant} criminal complaint docket filing", RECORDS_DOMAINS))
+        queries.append(("docket", f"{defendant} arrest affidavit incident report", RECORDS_DOMAINS))
+    if defendant and jurisdiction:
+        queries.append(("docket", f"{defendant} {jurisdiction} case number criminal docket", RECORDS_DOMAINS))
+
+    # --- 911 / Dispatch audio ---
+    if defendant:
+        queries.append(("dispatch", f"{defendant} 911 call audio released{year_str}", DISPATCH_DOMAINS + video_domains))
+        queries.append(("dispatch", f"{defendant} dispatch audio emergency call", DISPATCH_DOMAINS + video_domains))
+
     # Custom queries
     for q in (custom_queries or [])[:3]:
         queries.append(("other", q, video_domains))
@@ -215,6 +235,10 @@ def search_artifacts(exa, defendant: str, jurisdiction: str,
             queries.append(("interrogation", q, list(set(video_domains + region_domains))))
         for q in jurisdiction_queries.get("court", []):
             queries.append(("court", q, list(set(video_domains + region_domains))))
+        for q in jurisdiction_queries.get("docket", []):
+            queries.append(("docket", q, list(set(RECORDS_DOMAINS + region_domains))))
+        for q in jurisdiction_queries.get("dispatch", []):
+            queries.append(("dispatch", q, list(set(DISPATCH_DOMAINS + video_domains + region_domains))))
         for q in jurisdiction_queries.get("news", []):
             queries.append(("portal", q, region_domains))
 
@@ -228,20 +252,18 @@ def search_artifacts(exa, defendant: str, jurisdiction: str,
         for portal in get_transparency_portals(region_id):
             domain = extract_domain(portal.get("url", ""))
             if domain:
-                portal_query = f"site:{domain} {defendant} video"
-                queries.append(("portal", portal_query, [domain]))
-    
+                queries.append(("portal", f"site:{domain} {defendant} evidence release", [domain]))
+
     # Execute searches
     for qtype, query, include_domains in queries:
         try:
             search_results = exa.search(
                 query=query,
                 type="auto",
-                use_autoprompt=True,
                 num_results=5,
                 include_domains=include_domains,
             )
-            
+
             for r in search_results.results:
                 results[qtype].append({
                     "url": r.url,
@@ -249,9 +271,9 @@ def search_artifacts(exa, defendant: str, jurisdiction: str,
                     "score": getattr(r, 'score', 0),
                     "query": query
                 })
-            
+
             time.sleep(0.3)
-            
+
         except Exception as e:
             print(f"      Search error: {e}")
 
@@ -261,13 +283,15 @@ def search_artifacts(exa, defendant: str, jurisdiction: str,
 
         pacer_results = search_pacer(exa, defendant, jurisdiction)
         results["pacer"] = pacer_results.get("sources", [])
-    
+
     return results
 
 
 def assess_artifacts(llm, case_info: Dict, search_results: Dict) -> Dict:
-    """Use LLM to assess artifact availability."""
-    prompt = f"""Assess whether video artifacts exist for this case:
+    """Use LLM to assess artifact availability with depth metrics."""
+    prompt = f"""You are assessing primary-source evidence availability for a true crime case.
+This is NOT about news coverage — we need the raw artifacts: bodycam footage, interrogation
+recordings, 911 call audio, court filings, probable cause affidavits, and docket records.
 
 CASE:
 - Defendant: {case_info.get('defendant', 'Unknown')}
@@ -277,12 +301,21 @@ CASE:
 SEARCH RESULTS:
 Body Cam: {json.dumps(search_results.get('body_cam', [])[:5], indent=2)}
 Interrogation: {json.dumps(search_results.get('interrogation', [])[:5], indent=2)}
-Court: {json.dumps(search_results.get('court', [])[:5], indent=2)}
+Court Video: {json.dumps(search_results.get('court', [])[:5], indent=2)}
+Docket/Records: {json.dumps(search_results.get('docket', [])[:5], indent=2)}
+911/Dispatch: {json.dumps(search_results.get('dispatch', [])[:5], indent=2)}
 Portal/Local News: {json.dumps(search_results.get('portal', [])[:5], indent=2)}
 Reddit: {json.dumps(search_results.get('reddit', [])[:5], indent=2)}
 PACER/CourtListener: {json.dumps(search_results.get('pacer', [])[:5], indent=2)}
 
-Based on URLs and titles, return JSON:
+Evaluate each artifact type. For each, consider:
+- Is this the actual primary source (official release, court filing) or just news about it?
+- "official" = agency/court published it directly
+- "news" = news outlet reporting on or showing clips of it
+- "repost" = third-party reupload
+- "none" = not found
+
+Return JSON:
 {{
     "body_cam_exists": "YES/MAYBE/NO",
     "body_cam_sources": ["url1"],
@@ -290,9 +323,25 @@ Based on URLs and titles, return JSON:
     "interrogation_sources": ["url1"],
     "court_video_exists": "YES/MAYBE/NO",
     "court_sources": ["url1"],
+    "docket_exists": "YES/MAYBE/NO",
+    "docket_sources": ["url1"],
+    "dispatch_911_exists": "YES/MAYBE/NO",
+    "dispatch_sources": ["url1"],
+    "primary_source_score": 0,
+    "evidence_depth_score": 0,
+    "artifact_types_found": 0,
     "overall_assessment": "ENOUGH/BORDERLINE/INSUFFICIENT",
     "notes": "Brief explanation"
 }}
+
+Scoring guidance:
+- primary_source_score (0-100): How many results are actual primary sources vs news coverage?
+  100 = all official releases/filings, 0 = only news articles about the case
+- evidence_depth_score (0-100): Could a creator build an EWU/Dr. Insanity level video?
+  100 = bodycam + interrogation + 911 + court docs all available
+  50 = some primary sources but major gaps
+  0 = only news coverage, no raw artifacts
+- artifact_types_found: count of distinct types with YES or MAYBE (bodycam, interrogation, court, docket, 911)
 
 JSON only:"""
 
@@ -306,15 +355,15 @@ JSON only:"""
                 "X-Title": "NewsToViews-ArtifactHunter",
             }
         )
-        
+
         content = response.choices[0].message.content.strip()
         if "```json" in content:
             content = content.split("```json")[1].split("```")[0]
         elif "```" in content:
             content = content.split("```")[1].split("```")[0]
-        
+
         return json.loads(content)
-        
+
     except Exception as e:
         print(f"      Assessment error: {e}")
         return {}
@@ -431,27 +480,35 @@ def run_artifact_hunter(limit: int = None):
             ws_anchor.update_cell(row_idx, 7, assessment.get("body_cam_exists", ""))
             ws_anchor.update_cell(row_idx, 8, assessment.get("interrogation_exists", ""))
             ws_anchor.update_cell(row_idx, 9, assessment.get("court_video_exists", ""))
-            
+
+            # Consolidated sources: bodycam + interrogation + court + docket + dispatch
             all_sources = (
                 assessment.get("body_cam_sources", []) +
                 assessment.get("interrogation_sources", []) +
-                assessment.get("court_sources", [])
+                assessment.get("court_sources", []) +
+                assessment.get("docket_sources", []) +
+                assessment.get("dispatch_sources", [])
             )
-            ws_anchor.update_cell(row_idx, 10, "\n".join(all_sources[:5]))
-            
+            ws_anchor.update_cell(row_idx, 10, "\n".join(all_sources[:8]))
+
+            # Overall assessment + depth summary
             overall = assessment.get("overall_assessment", "INSUFFICIENT")
-            ws_anchor.update_cell(row_idx, 11, overall)
-            
+            depth = assessment.get("evidence_depth_score", 0)
+            primary = assessment.get("primary_source_score", 0)
+            types_found = assessment.get("artifact_types_found", 0)
+            depth_summary = f"{overall} | depth:{depth} primary:{primary} types:{types_found}"
+            ws_anchor.update_cell(row_idx, 11, depth_summary)
+
             stats["processed"] += 1
             if overall == "ENOUGH":
                 stats["enough"] += 1
-                print(f"    ✅ ENOUGH")
+                print(f"    ✅ ENOUGH (depth={depth}, primary={primary}, types={types_found})")
             elif overall == "BORDERLINE":
                 stats["borderline"] += 1
-                print(f"    ⚠️ BORDERLINE")
+                print(f"    ⚠️ BORDERLINE (depth={depth}, primary={primary}, types={types_found})")
             else:
                 stats["insufficient"] += 1
-                print(f"    ❌ INSUFFICIENT")
+                print(f"    ❌ INSUFFICIENT (depth={depth}, primary={primary}, types={types_found})")
                 
         except Exception as e:
             print(f"    Sheet update error: {e}")

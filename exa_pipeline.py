@@ -209,9 +209,12 @@ ENHANCED_TRIAGE_SCHEMA = {
     "verdict": "KILL",
     "kill_reason": "",
     "artifact_queries": [
-        "{defendant} {agency} bodycam {year}",
+        "{defendant} probable cause affidavit {agency}",
+        "{defendant} {agency} bodycam release {year}",
+        "{defendant} criminal docket filing {jurisdiction}",
+        "{defendant} 911 call audio {year}",
+        "{defendant} interrogation video released",
         "{case_number} court video",
-        "{victim} {defendant} trial",
     ],
 }
 
