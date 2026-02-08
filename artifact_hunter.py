@@ -129,6 +129,33 @@ def get_llm_client():
     return OpenAI(api_key=OPENROUTER_API_KEY, base_url="https://openrouter.ai/api/v1")
 
 # =============================================================================
+# SHEET HELPERS
+# =============================================================================
+
+def safe_get_all_records(ws) -> list:
+    """get_all_records() that handles duplicate/empty header cells.
+
+    gspread raises GSpreadException when the header row contains duplicate
+    values (e.g. multiple blank columns).  This helper reads raw values,
+    makes every header unique, then builds the list of dicts manually.
+    """
+    rows = ws.get_all_values()
+    if not rows:
+        return []
+
+    headers = list(rows[0])
+    # Make empty / duplicate headers unique by appending _<index>
+    seen = {}
+    for i, h in enumerate(headers):
+        key = h if h else f"_blank_{i}"
+        if key in seen:
+            key = f"{key}_{i}"
+        seen[key] = True
+        headers[i] = key
+
+    return [dict(zip(headers, row)) for row in rows[1:]]
+
+# =============================================================================
 # UTILITY FUNCTIONS
 # =============================================================================
 
@@ -747,11 +774,11 @@ def run_artifact_hunter(limit: int = None, dry_run: bool = False,
         return {"error": str(e)}
 
     # Get cases
-    cases = ws_anchor.get_all_records()
+    cases = safe_get_all_records(ws_anchor)
     print(f"[INIT] {len(cases)} cases in CASE ANCHOR")
 
     # Get intake data for artifact queries
-    intake_records = ws_intake.get_all_records()
+    intake_records = safe_get_all_records(ws_intake)
     intake_by_id = {str(i): r for i, r in enumerate(intake_records, start=2)}
 
     stats = {

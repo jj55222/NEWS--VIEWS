@@ -286,10 +286,33 @@ def triage_article(llm, title: str, text: str) -> Dict:
 # SHEETS OPERATIONS
 # =============================================================================
 
+def safe_get_all_records(ws) -> list:
+    """get_all_records() that handles duplicate/empty header cells.
+
+    gspread raises GSpreadException when the header row contains duplicate
+    values (e.g. multiple blank columns).  This helper reads raw values,
+    makes every header unique, then builds the list of dicts manually.
+    """
+    rows = ws.get_all_values()
+    if not rows:
+        return []
+
+    headers = list(rows[0])
+    seen = {}
+    for i, h in enumerate(headers):
+        key = h if h else f"_blank_{i}"
+        if key in seen:
+            key = f"{key}_{i}"
+        seen[key] = True
+        headers[i] = key
+
+    return [dict(zip(headers, row)) for row in rows[1:]]
+
+
 def get_existing_urls(ws_intake) -> set:
     """Get URLs already in NEWS INTAKE."""
     try:
-        records = ws_intake.get_all_records()
+        records = safe_get_all_records(ws_intake)
         return {r.get("Article URL", "").strip() for r in records if r.get("Article URL")}
     except Exception:
         return set()
@@ -418,7 +441,7 @@ def run_pipeline(test_mode: bool = False, single_region: str = None, limit: int 
     print(f"[INIT] {len(existing_urls)} existing articles")
     
     # Load regions
-    regions = ws_regions.get_all_records()
+    regions = safe_get_all_records(ws_regions)
     print(f"[INIT] {len(regions)} regions configured")
     
     # Filter regions
