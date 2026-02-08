@@ -40,7 +40,7 @@ JURISDICTION_PORTALS = {
         "news_channels": [
             "https://www.youtube.com/@KRONon",
             "https://www.youtube.com/@abc7news",
-            "https://www.youtube.com/@ABORINGDYSTOPIA",
+            "https://www.youtube.com/@KPIXCBSBayArea",
         ],
         "search_domains": [
             "sfchronicle.com",
@@ -57,7 +57,7 @@ JURISDICTION_PORTALS = {
                 "name": "San Diego Police Department",
                 "abbrev": "SDPD",
                 "youtube": "https://www.youtube.com/@SanDiegoPD",
-                "transparency_portal": "https://www.sandiego.gov/police/services/transparency",
+                "transparency_portal": "https://www.sandiego.gov/police/data-transparency/critical-incident-videos",
                 "foia_portal": "https://www.sandiego.gov/police/services/records",
             },
             {
@@ -76,7 +76,7 @@ JURISDICTION_PORTALS = {
         ],
         "news_channels": [
             "https://www.youtube.com/@CBS8SanDiego",
-            "https://www.youtube.com/@10aboringdystopia",
+            "https://www.youtube.com/@CBS8SanDiego",
         ],
         "search_domains": [
             "sandiegouniontribune.com",
@@ -153,15 +153,15 @@ JURISDICTION_PORTALS = {
             {
                 "name": "Los Angeles Police Department",
                 "abbrev": "LAPD",
-                "youtube": "https://www.youtube.com/@LosAngelesPolice",
-                "transparency_portal": "https://www.lapdonline.org/office-of-the-chief-of-police/constitutional-policing/critical-incident-videos/",
+                "youtube": "https://www.youtube.com/@LAPDHQ",
+                "transparency_portal": "https://www.lapdonline.org/office-of-the-chief-of-police/professional-standards-bureau/critical-incident-videos/",
                 "foia_portal": "https://www.lapdonline.org/records/",
-                "notes": "LAPD releases critical incident videos on YouTube",
+                "notes": "~3-4 BWC videos/month. 45-day release. Year-by-year archives.",
             },
             {
                 "name": "Los Angeles County Sheriff",
                 "abbrev": "LASD",
-                "youtube": "https://www.youtube.com/@ABORINGDYSTOPIA",
+                "youtube": None,
                 "transparency_portal": "https://lasd.org/transparency/",
             },
         ],
@@ -176,7 +176,7 @@ JURISDICTION_PORTALS = {
         ],
         "news_channels": [
             "https://www.youtube.com/@ABC7",
-            "https://www.youtube.com/@ABORINGDYSTOPIA",
+            "https://www.youtube.com/@CBSLA",
             "https://www.youtube.com/@KTLA5",
         ],
         "search_domains": [
@@ -351,7 +351,7 @@ JURISDICTION_PORTALS = {
         ],
         "news_channels": [
             "https://www.youtube.com/@12News",
-            "https://www.youtube.com/@abcaboringdystopia",
+            "https://www.youtube.com/@abc15",
             "https://www.youtube.com/@FOX10Phoenix",
         ],
         "search_domains": [
@@ -490,7 +490,7 @@ JURISDICTION_PORTALS = {
         ],
         "news_channels": [
             "https://www.youtube.com/@DenverChannel",
-            "https://www.youtube.com/@9aboringdystopia",
+            "https://www.youtube.com/@9NEWS",
         ],
         "search_domains": [
             "denverpost.com",
@@ -505,8 +505,9 @@ JURISDICTION_PORTALS = {
             {
                 "name": "Colorado Springs Police Department",
                 "abbrev": "CSPD",
-                "youtube": None,
-                "transparency_portal": "https://coloradosprings.gov/police-department/page/cspd-transparency",
+                "youtube": "https://www.youtube.com/channel/UC6547e-x50KWl7FGnr9-fVg",
+                "transparency_portal": "https://coloradosprings.gov/police-department/page/cases-interest",
+                "notes": "Proactive BWC release within 21 days. Significant Event Briefings.",
             }
         ],
         "courts": [
@@ -517,7 +518,7 @@ JURISDICTION_PORTALS = {
             }
         ],
         "news_channels": [
-            "https://www.youtube.com/@ABORINGDYSTOPIA",
+            "https://www.youtube.com/@KRDO",
         ],
         "search_domains": [
             "gazette.com",
@@ -531,8 +532,9 @@ JURISDICTION_PORTALS = {
             {
                 "name": "Denver Police Department",
                 "abbrev": "DPD",
-                "youtube": "https://www.youtube.com/@DenverPolice",
-                "transparency_portal": "https://www.denvergov.org/Government/Agencies-Departments-Offices/Agencies-Departments-Offices-Directory/Police-Department/Crime-Information/Crime-Data-Statistics",
+                "youtube": "https://www.youtube.com/user/DenverPoliceDept",
+                "transparency_portal": "https://denvergov.org/Government/Agencies-Departments-Offices/Agencies-Departments-Offices-Directory/Police-Department/Publicly-Released-Recordings",
+                "notes": "~1 week press briefing cycle after critical incidents. Dedicated recordings page.",
             }
         ],
         "courts": [
@@ -634,7 +636,7 @@ JURISDICTION_PORTALS = {
             }
         ],
         "news_channels": [
-            "https://www.youtube.com/@WABORINGDYSTOPIA",
+            "https://www.youtube.com/@WFAA",
             "https://www.youtube.com/@NBCDFWNews",
         ],
         "search_domains": [
