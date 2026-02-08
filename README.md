@@ -86,6 +86,7 @@ Regions & Sources (your config)
 
 - `exa_pipeline.py` - Main news intake script
 - `artifact_hunter.py` - Video artifact discovery
+- `jurisdiction_portals.py` - Region/agency knowledge registry (used by artifact_hunter)
 - `.env` - Your credentials (don't commit!)
 - `.env.template` - Template for .env
 - `requirements.txt` - Python dependencies

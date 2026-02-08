@@ -122,7 +122,7 @@ SERVICE_ACCOUNT_PATH — Path to Google service account JSON (default: ./service
 4. **artifact_hunter writes by cell index** (row_idx, col_number) — if CASE ANCHOR columns shift, those hardcoded indices break.
 5. **OpenRouter requires extra headers** — `HTTP-Referer` and `X-Title` must be present on all LLM calls.
 6. **Rate limiting**: Exa calls have 0.3s sleep, LLM calls have 0.5s sleep, region transitions have 1s sleep. Do not remove these.
-7. **All scripts must work from CLI** with `--check`, `--test`, and `--limit` flags for safe iteration.
+7. **All scripts must work from CLI** with `--check`, `--test`, and `--limit` flags for safe iteration. `exa_pipeline.py` also supports `--region <ID>` for single-region runs.
 
 ---
 
@@ -138,6 +138,7 @@ SERVICE_ACCOUNT_PATH — Path to Google service account JSON (default: ./service
   - `append_intake_row()` — Write to NEWS INTAKE
   - `promote_to_anchor()` — Copy PASS case to CASE ANCHOR
 - **Config knobs**: `MAX_RESULTS_PER_REGION`, `MIN_ARTICLE_LENGTH`, `DEFAULT_START_DATE`, `DEFAULT_END_DATE`
+- **CLI flags**: `--test` (3 regions), `--region <ID>` (single region), `--limit <N>` (max articles to triage), `--check` (validate credentials)
 - **LLM model**: Set via `OPENROUTER_MODEL` env var (default: `deepseek/deepseek-v3.2`)
 
 ### `artifact_hunter.py` (Pass 2 — Footage Discovery)
@@ -149,6 +150,7 @@ SERVICE_ACCOUNT_PATH — Path to Google service account JSON (default: ./service
   - `assess_artifacts()` — LLM assessment of artifact availability
   - `search_reddit_cases()` — Reddit-specific case discussion search
   - `search_pacer()` — CourtListener/PACER record search
+- **CLI flags**: `--test` (3 cases), `--limit <N>` (max cases to process), `--check` (validate credentials)
 - **Writes to**: CASE ANCHOR columns G-K (by cell index)
 
 ### `jurisdiction_portals.py` (Knowledge Layer)

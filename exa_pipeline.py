@@ -7,6 +7,7 @@ Usage:
     python exa_pipeline.py                    # Run full pipeline
     python exa_pipeline.py --test             # Test mode (3 regions)
     python exa_pipeline.py --region SF        # Single region
+    python exa_pipeline.py --limit 10         # Max articles to triage
     python exa_pipeline.py --check            # Check credentials only
 """
 
@@ -351,7 +352,7 @@ def promote_to_anchor(ws_anchor, region_id: str, article: Dict,
 # MAIN PIPELINE
 # =============================================================================
 
-def run_pipeline(test_mode: bool = False, single_region: str = None):
+def run_pipeline(test_mode: bool = False, single_region: str = None, limit: int = None):
     """Main pipeline execution."""
     print("=" * 60)
     print("NEWS → VIEWS: Exa Pipeline")
@@ -443,7 +444,11 @@ def run_pipeline(test_mode: bool = False, single_region: str = None):
                 print(f"      SKIP: duplicate")
                 stats["skipped"] += 1
                 continue
-            
+
+            if limit and stats["triaged"] >= limit:
+                print(f"\n[LIMIT] Reached {limit} articles triaged")
+                break
+
             # Triage
             triage = triage_article(llm, article.get("title", ""), article.get("text", ""))
             
@@ -471,6 +476,10 @@ def run_pipeline(test_mode: bool = False, single_region: str = None):
             time.sleep(0.5)
         
         stats["regions"] += 1
+
+        if limit and stats["triaged"] >= limit:
+            break
+
         time.sleep(1)
     
     # Report
@@ -495,15 +504,16 @@ def main():
     parser = argparse.ArgumentParser(description="NEWS → VIEWS Pipeline")
     parser.add_argument("--test", action="store_true", help="Test mode (3 regions)")
     parser.add_argument("--region", type=str, help="Process single region")
+    parser.add_argument("--limit", type=int, help="Max articles to triage")
     parser.add_argument("--check", action="store_true", help="Check credentials only")
-    
+
     args = parser.parse_args()
-    
+
     if args.check:
         check_credentials()
         return
-    
-    run_pipeline(test_mode=args.test, single_region=args.region)
+
+    run_pipeline(test_mode=args.test, single_region=args.region, limit=args.limit)
 
 
 if __name__ == "__main__":

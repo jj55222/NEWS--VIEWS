@@ -5,6 +5,7 @@ Searches for body cam, interrogation, and court footage for PASS cases
 
 Usage:
     python artifact_hunter.py              # Process all unassessed cases
+    python artifact_hunter.py --test       # Test mode (3 cases)
     python artifact_hunter.py --limit 5    # Process max 5 cases
     python artifact_hunter.py --check      # Check credentials only
 """
@@ -477,16 +478,22 @@ def run_artifact_hunter(limit: int = None):
 
 def main():
     parser = argparse.ArgumentParser(description="Artifact Hunter")
+    parser.add_argument("--test", action="store_true", help="Test mode (3 cases)")
     parser.add_argument("--limit", type=int, help="Max cases to process")
     parser.add_argument("--check", action="store_true", help="Check credentials only")
-    
+
     args = parser.parse_args()
-    
+
     if args.check:
         check_credentials()
         return
-    
-    run_artifact_hunter(limit=args.limit)
+
+    effective_limit = args.limit
+    if args.test:
+        effective_limit = 3
+        print("[TEST] Test mode — processing max 3 cases")
+
+    run_artifact_hunter(limit=effective_limit)
 
 
 if __name__ == "__main__":
