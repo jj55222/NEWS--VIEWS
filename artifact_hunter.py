@@ -1,13 +1,19 @@
 #!/usr/bin/env python3
 """
-NEWS → VIEWS: Artifact Hunter
-Searches for body cam, interrogation, and court footage for PASS cases
+NEWS → VIEWS: Artifact Hunter v3
+Searches for bodycam, interrogation, court footage, docket documents,
+911 dispatch audio, and primary-source records for PASS cases.
+
+Search backends: Brave Search (web), YouTube Data API (video),
+Vimeo API (video), with optional Exa fallback.
 
 Usage:
-    python artifact_hunter.py              # Process all unassessed cases
-    python artifact_hunter.py --test       # Test mode (3 cases)
-    python artifact_hunter.py --limit 5    # Process max 5 cases
-    python artifact_hunter.py --check      # Check credentials only
+    python artifact_hunter.py                       # Process all unassessed cases
+    python artifact_hunter.py --limit 5             # Process max 5 cases
+    python artifact_hunter.py --dry-run             # Search + assess, don't write
+    python artifact_hunter.py --check               # Check credentials only
+    python artifact_hunter.py --post-threshold-only # Re-score ENOUGH/BORDERLINE cases
+    python artifact_hunter.py --no-bundle           # Skip bundle JSON output
 """
 
 import os
@@ -16,7 +22,7 @@ import json
 import time
 import argparse
 from pathlib import Path
-from typing import List, Dict
+from typing import List, Dict, Tuple
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -27,7 +33,17 @@ from jurisdiction_portals import (
     get_agency_youtube_channels,
     get_search_domains_for_region,
     get_transparency_portals,
+    DISPATCH_DOMAINS,
+    RECORDS_DOMAINS,
 )
+from search_backends import (
+    web_search_brave,
+    youtube_search,
+    vimeo_search,
+    check_search_credentials,
+    print_search_credential_status,
+)
+from bundle_scoring import score_case_bundle
 
 # =============================================================================
 # CONFIGURATION
@@ -36,8 +52,20 @@ from jurisdiction_portals import (
 SHEET_ID = os.getenv("SHEET_ID")
 EXA_API_KEY = os.getenv("EXA_API_KEY")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-v3.2")
 SERVICE_ACCOUNT_PATH = os.getenv("SERVICE_ACCOUNT_PATH", "./service_account.json")
+
+# Model split: use a lighter model for artifact assessment
+OPENROUTER_MODEL_ARTIFACT = os.getenv(
+    "OPENROUTER_MODEL_ARTIFACT",
+    os.getenv("OPENROUTER_MODEL", "google/gemini-2.0-flash-001"),
+)
+
+# Search backend config
+ALLOW_EXA_FALLBACK = os.getenv("ALLOW_EXA_FALLBACK", "true").lower() == "true"
+
+# Caps
+MAX_RESULTS_PER_BUCKET = 10
+MAX_TOTAL_RESULTS_FOR_LLM = 35
 
 # =============================================================================
 # VALIDATION
@@ -47,20 +75,34 @@ def check_credentials() -> bool:
     errors = []
     if not SHEET_ID:
         errors.append("SHEET_ID not set")
-    if not EXA_API_KEY:
-        errors.append("EXA_API_KEY not set")
     if not OPENROUTER_API_KEY:
         errors.append("OPENROUTER_API_KEY not set")
     if not Path(SERVICE_ACCOUNT_PATH).exists():
         errors.append(f"Service account not found: {SERVICE_ACCOUNT_PATH}")
-    
+
     if errors:
         print("❌ Configuration errors:")
         for e in errors:
             print(f"   - {e}")
         return False
-    
-    print("✅ Credentials OK")
+
+    print("✅ Core credentials OK")
+
+    # Show search backend status
+    print("\n   Search backends:")
+    backends = print_search_credential_status()
+
+    if not any(backends.values()) and not EXA_API_KEY:
+        print("\n   ⚠️  No search backends configured. Set at least one of:")
+        print("      BRAVE_API_KEY")
+        print("      YOUTUBE_API_KEY")
+        print("      EXA_API_KEY (fallback)")
+        return False
+
+    if EXA_API_KEY:
+        print(f"   {'✅' if ALLOW_EXA_FALLBACK else '⚠️'} Exa fallback: {'enabled' if ALLOW_EXA_FALLBACK else 'disabled'}")
+
+    print(f"\n   Assessment model: {OPENROUTER_MODEL_ARTIFACT}")
     return True
 
 # =============================================================================
@@ -76,6 +118,8 @@ def get_gspread_client():
 
 
 def get_exa_client():
+    if not EXA_API_KEY:
+        return None
     from exa_py import Exa
     return Exa(api_key=EXA_API_KEY)
 
@@ -85,205 +129,521 @@ def get_llm_client():
     return OpenAI(api_key=OPENROUTER_API_KEY, base_url="https://openrouter.ai/api/v1")
 
 # =============================================================================
-# ARTIFACT SEARCH
+# UTILITY FUNCTIONS
 # =============================================================================
 
-def extract_subreddit(url: str) -> str:
-    """Extract subreddit name from a Reddit URL."""
-    if not url:
-        return ""
-    match = re.search(r"reddit\.com/r/([^/]+)", url)
-    return match.group(1) if match else ""
+def _is_relevant(title: str, url: str, defendant: str) -> bool:
+    """Check if a search result is actually about this defendant."""
+    if not defendant:
+        return True
+    name_parts = defendant.lower().split()
+    target = title.lower() + " " + url.lower()
+    return any(part in target for part in name_parts if len(part) >= 3)
 
 
-def check_for_video_links(text: str) -> bool:
-    """Check if text mentions video platforms."""
-    if not text:
-        return False
-    platforms = ("youtube.com", "youtu.be", "vimeo.com", "tiktok.com", "facebook.com")
-    return any(platform in text.lower() for platform in platforms)
+def _dedup_results(results_list: List[Dict]) -> List[Dict]:
+    """Remove duplicate URLs within a result bucket."""
+    seen = set()
+    deduped = []
+    for r in results_list:
+        url = r.get("url", "")
+        if url not in seen:
+            seen.add(url)
+            deduped.append(r)
+    return deduped
 
 
-def search_reddit_cases(exa, defendant: str, jurisdiction: str) -> Dict:
-    """Search Reddit true crime communities for case discussion."""
-    results = {"discussions": [], "ama": [], "updates": []}
+def _slim_results(results_list: List[Dict], max_per_bucket: int = 3) -> List[Dict]:
+    """Trim results for LLM prompt: url + title + short snippet only."""
+    slim = []
+    for r in results_list[:max_per_bucket]:
+        entry = {"url": r.get("url", ""), "title": r.get("title", "")}
+        snippet = r.get("snippet", "")
+        if snippet:
+            entry["text"] = snippet[:300]
+        slim.append(entry)
+    return slim
 
-    queries = [
-        f"site:reddit.com {defendant} case",
-        f"site:reddit.com {jurisdiction} murder {defendant}",
-    ]
+
+# =============================================================================
+# STEP 0: PARSE EXISTING SOURCES (FREE)
+# =============================================================================
+
+def parse_existing_sources(cell_text: str) -> Dict[str, List[Dict]]:
+    """Parse URLs already in Footage Sources column into typed buckets.
+
+    This is free — no API calls needed. If the anchor row already has
+    source URLs, classify them before doing any paid search.
+    """
+    buckets = {
+        "body_cam": [], "interrogation": [], "court": [],
+        "docket": [], "dispatch": [], "other": [],
+    }
+
+    if not cell_text:
+        return buckets
+
+    urls = re.findall(r'https?://[^\s<>"]+', str(cell_text))
+
+    for url in urls:
+        url_lower = url.lower()
+        entry = {"url": url, "title": "", "snippet": "", "source": "existing"}
+
+        if "youtube.com" in url_lower or "youtu.be" in url_lower:
+            # Could be bodycam, interrogation, or court — put in other for now
+            buckets["body_cam"].append(entry)
+        elif "vimeo.com" in url_lower:
+            buckets["body_cam"].append(entry)
+        elif url_lower.endswith(".pdf"):
+            buckets["docket"].append(entry)
+        elif "courtlistener.com" in url_lower:
+            buckets["docket"].append(entry)
+        elif "broadcastify.com" in url_lower or "openmhz.com" in url_lower:
+            buckets["dispatch"].append(entry)
+        else:
+            buckets["other"].append(entry)
+
+    return buckets
+
+
+# =============================================================================
+# STEP 1: VIDEO RETRIEVAL (YouTube + Vimeo APIs)
+# =============================================================================
+
+def search_videos(defendant: str, jurisdiction: str,
+                  incident_year: str = None,
+                  hints: List[str] = None) -> Dict[str, List[Dict]]:
+    """Search YouTube and Vimeo for case-related video artifacts."""
+    results = {"body_cam": [], "interrogation": [], "court": []}
+
+    backends = check_search_credentials()
+
+    # YouTube
+    if backends["youtube"]:
+        yt_hits = youtube_search(defendant, jurisdiction, incident_year, hints)
+        for hit in yt_hits:
+            if not _is_relevant(hit.get("title", ""), hit.get("url", ""), defendant):
+                continue
+            bucket = _bucketize_result(hit)
+            if bucket in results:
+                results[bucket].append(hit)
+            else:
+                results["body_cam"].append(hit)
+
+    # Vimeo
+    if backends["vimeo"]:
+        vim_hits = vimeo_search(defendant, jurisdiction, incident_year, hints)
+        for hit in vim_hits:
+            if not _is_relevant(hit.get("title", ""), hit.get("url", ""), defendant):
+                continue
+            bucket = _bucketize_result(hit)
+            if bucket in results:
+                results[bucket].append(hit)
+            else:
+                results["body_cam"].append(hit)
+
+    return results
+
+
+# =============================================================================
+# STEP 2: WEB RETRIEVAL (Brave Search)
+# =============================================================================
+
+# Keywords used to classify web results into artifact buckets
+BUCKET_KEYWORDS = {
+    "body_cam": ["body cam", "bodycam", "bwc", "body-worn", "dashcam", "dash cam"],
+    "interrogation": ["interrogation", "interview", "confession"],
+    "court": ["trial", "hearing", "courtroom", "livestream", "sentencing", "arraignment"],
+    "docket": ["docket", "complaint", "affidavit", "probable cause", "charging",
+               "indictment", "case number", ".pdf", "filing"],
+    "dispatch": ["911", "dispatch", "scanner", "emergency call"],
+}
+
+
+def _bucketize_result(result: Dict) -> str:
+    """Classify a search result into an artifact bucket by keywords."""
+    text = (result.get("title", "") + " " + result.get("snippet", "") +
+            " " + result.get("url", "")).lower()
+
+    for bucket, keywords in BUCKET_KEYWORDS.items():
+        if any(kw in text for kw in keywords):
+            return bucket
+    return "other"
+
+
+def build_web_queries(defendant: str, jurisdiction: str,
+                      incident_year: str = None,
+                      custom_queries: List[str] = None) -> List[str]:
+    """Build web queries for Brave Search — broad discovery + targeted artifact queries.
+
+    Strategy: start with broad entity discovery (like old Exa approach)
+    to surface links, then add targeted artifact-specific queries.
+    """
+    year_str = f" {incident_year}" if incident_year else ""
+    queries = []
+
+    # --- Broad discovery (cast a wide net like Exa used to) ---
+    if defendant and jurisdiction:
+        # General case discovery — unquoted so Brave can match partial
+        queries.append(f"{defendant} {jurisdiction} case")
+        queries.append(f"{defendant} {jurisdiction}{year_str}")
+        # Quoted defendant with loose context
+        queries.append(f'"{defendant}" {jurisdiction}')
+    elif defendant:
+        queries.append(f"{defendant} criminal case")
+        queries.append(f'"{defendant}" arrested')
+
+    # --- Targeted artifact queries ---
+    name = defendant or ""
+    loc = jurisdiction.split(",")[0].strip() if jurisdiction else ""  # first part (city)
+
+    if name:
+        # Video artifacts
+        queries.append(f"{name} bodycam OR body camera OR dashcam")
+        queries.append(f"{name} interrogation OR confession video")
+        queries.append(f"{name} court OR trial OR sentencing video")
+        queries.append(f"{name} 911 call OR dispatch audio")
+        # Primary source documents
+        queries.append(f"{name} probable cause affidavit OR criminal complaint")
+        queries.append(f"{name} docket OR court records {loc}")
+        # News + press releases (often link to artifacts)
+        queries.append(f"{name} {loc} police press release OR press conference")
+
+    # Add intake artifact queries (from exa_pipeline triage)
+    for q in (custom_queries or [])[:3]:
+        queries.append(q)
+
+    return queries[:15]  # increased cap from 8 to 15
+
+
+def search_web(defendant: str, jurisdiction: str,
+               incident_year: str = None,
+               custom_queries: List[str] = None) -> Dict[str, List[Dict]]:
+    """Search Brave for case IDs, docket docs, and press releases."""
+    results = {
+        "body_cam": [], "interrogation": [], "court": [],
+        "docket": [], "dispatch": [], "other": [],
+    }
+
+    backends = check_search_credentials()
+    if not backends["brave"]:
+        return results
+
+    queries = build_web_queries(defendant, jurisdiction, incident_year, custom_queries)
+    seen_urls = set()
 
     for query in queries:
-        try:
-            search_results = exa.search(query=query, num_results=10)
-        except Exception as e:
-            print(f"      Reddit search error: {e}")
-            continue
+        hits = web_search_brave(query, num=10)
 
-        for r in search_results.results:
-            post_data = {
-                "url": r.url,
-                "title": getattr(r, "title", ""),
-                "subreddit": extract_subreddit(r.url),
-                "has_video_links": check_for_video_links(getattr(r, "text", "")),
-                "upvotes": None,
-            }
-            results["discussions"].append(post_data)
+        for hit in hits:
+            url = hit.get("url", "")
+            if url in seen_urls:
+                continue
+            seen_urls.add(url)
+
+            if not _is_relevant(hit.get("title", ""), url, defendant):
+                continue
+
+            bucket = _bucketize_result(hit)
+            results[bucket].append(hit)
+
+        time.sleep(0.2)
 
     return results
 
 
-def search_pacer(exa, defendant: str, jurisdiction: str, case_type: str = "cr") -> Dict:
-    """Search federal court records via CourtListener (free PACER data)."""
-    query = f"site:courtlistener.com {defendant} {jurisdiction} {case_type}"
-    case_data = {
-        "case_number": "",
-        "court": "",
-        "judge": "",
-        "filing_date": "",
-        "docket_entries": [],
-        "has_transcripts": False,
-        "has_exhibits": False,
-        "sources": [],
-    }
+# =============================================================================
+# STEP 3: EXA FALLBACK (optional, capped)
+# =============================================================================
 
-    try:
-        results = exa.search(query=query, num_results=10)
-    except Exception as e:
-        print(f"      PACER search error: {e}")
-        return case_data
-
-    for r in results.results:
-        case_data["sources"].append({
-            "url": r.url,
-            "title": getattr(r, "title", ""),
-            "score": getattr(r, "score", 0),
-        })
-
-    return case_data
-
-
-def search_artifacts(exa, defendant: str, jurisdiction: str,
-                     crime_type: str = "", custom_queries: List[str] = None,
-                     region_id: str = None, incident_year: str = None) -> Dict:
-    """Search for video artifacts."""
+def search_exa_fallback(exa, defendant: str, jurisdiction: str,
+                        incident_year: str = None) -> Dict[str, List[Dict]]:
+    """Run 1-2 Exa searches as semantic rescue when Brave/YouTube found nothing."""
     results = {
-        "body_cam": [],
-        "interrogation": [],
-        "court": [],
-        "other": [],
-        "portal": [],
-        "reddit": [],
-        "pacer": [],
+        "body_cam": [], "interrogation": [], "court": [],
+        "docket": [], "dispatch": [], "other": [],
     }
-    
-    defendant = defendant.split(",")[0].strip() if defendant else ""
-    jurisdiction = jurisdiction.strip() if jurisdiction else ""
-    
-    if not defendant and not jurisdiction:
+
+    if not exa:
         return results
-    
-    video_domains = [
-        "youtube.com", "vimeo.com", "youtu.be", "facebook.com", "twitter.com"
+
+    year_str = f" {incident_year}" if incident_year else ""
+
+    fallback_queries = [
+        f'"{defendant}" bodycam OR interrogation OR "court video" OR affidavit{year_str}',
+        f'"{defendant}" 911 call OR docket OR "criminal complaint" {jurisdiction}',
     ]
-    queries = []
-    
-    # Body cam
-    if jurisdiction:
-        queries.append(("body_cam", f"{jurisdiction} police body camera footage", video_domains))
-        queries.append(("body_cam", f"{jurisdiction} bodycam video incident", video_domains))
-    
-    # Interrogation
-    if defendant:
-        queries.append(("interrogation", f"{defendant} interrogation video police interview", video_domains))
-        queries.append(("interrogation", f"{defendant} confession interview recording", video_domains))
-    
-    # Court
-    if defendant:
-        queries.append(("court", f"{defendant} court video trial sentencing", video_domains))
-    
-    # Custom queries
-    for q in (custom_queries or [])[:3]:
-        queries.append(("other", q, video_domains))
 
-    # Jurisdiction-aware queries
-    if region_id:
-        jurisdiction_queries = build_jurisdiction_queries(region_id, defendant, incident_year)
-        region_domains = get_search_domains_for_region(region_id)
-        for q in jurisdiction_queries.get("bodycam", []):
-            queries.append(("body_cam", q, list(set(video_domains + region_domains))))
-        for q in jurisdiction_queries.get("interrogation", []):
-            queries.append(("interrogation", q, list(set(video_domains + region_domains))))
-        for q in jurisdiction_queries.get("court", []):
-            queries.append(("court", q, list(set(video_domains + region_domains))))
-        for q in jurisdiction_queries.get("news", []):
-            queries.append(("portal", q, region_domains))
-
-        for channel in get_agency_youtube_channels(region_id)[:3]:
-            queries.append((
-                "body_cam",
-                f"{defendant} site:youtube.com {channel.get('name', '')}",
-                ["youtube.com"],
-            ))
-
-        for portal in get_transparency_portals(region_id):
-            domain = extract_domain(portal.get("url", ""))
-            if domain:
-                portal_query = f"site:{domain} {defendant} video"
-                queries.append(("portal", portal_query, [domain]))
-    
-    # Execute searches
-    for qtype, query, include_domains in queries:
+    for query in fallback_queries:
         try:
-            search_results = exa.search(
+            search_results = exa.search_and_contents(
                 query=query,
                 type="auto",
-                use_autoprompt=True,
-                num_results=5,
-                include_domains=include_domains,
+                num_results=3,
+                text={"max_characters": 800},
             )
-            
+
             for r in search_results.results:
-                results[qtype].append({
-                    "url": r.url,
-                    "title": getattr(r, 'title', ''),
-                    "score": getattr(r, 'score', 0),
-                    "query": query
-                })
-            
+                url = r.url
+                title = getattr(r, 'title', '')
+
+                if not _is_relevant(title, url, defendant):
+                    continue
+
+                hit = {
+                    "url": url,
+                    "title": title,
+                    "snippet": (getattr(r, 'text', '') or '')[:500],
+                    "source": "exa_fallback",
+                }
+                bucket = _bucketize_result(hit)
+                results[bucket].append(hit)
+
             time.sleep(0.3)
-            
+
         except Exception as e:
-            print(f"      Search error: {e}")
+            print(f"      Exa fallback error: {e}")
 
-    if defendant or jurisdiction:
-        reddit_results = search_reddit_cases(exa, defendant, jurisdiction)
-        results["reddit"] = reddit_results.get("discussions", [])
-
-        pacer_results = search_pacer(exa, defendant, jurisdiction)
-        results["pacer"] = pacer_results.get("sources", [])
-    
     return results
+
+
+# =============================================================================
+# COMBINED SEARCH ORCHESTRATOR
+# =============================================================================
+
+def _merge_results(base: Dict, additions: Dict) -> Dict:
+    """Merge result buckets, deduplicating by URL."""
+    for key in additions:
+        if key in base:
+            base[key].extend(additions[key])
+    return base
+
+
+def _count_results(results: Dict) -> int:
+    """Count total results across all buckets."""
+    return sum(len(v) for v in results.values())
+
+
+def _cap_results(results: Dict) -> Dict:
+    """Cap each bucket to MAX_RESULTS_PER_BUCKET."""
+    for key in results:
+        results[key] = results[key][:MAX_RESULTS_PER_BUCKET]
+    return results
+
+
+def search_artifacts(defendant: str, jurisdiction: str,
+                     crime_type: str = "", custom_queries: List[str] = None,
+                     region_id: str = None, incident_year: str = None,
+                     existing_sources_text: str = "",
+                     exa=None) -> Tuple[Dict, Dict]:
+    """Orchestrate the full retrieval funnel for a case.
+
+    Returns:
+        (results_dict, telemetry_dict)
+    """
+    results = {
+        "body_cam": [], "interrogation": [], "court": [],
+        "docket": [], "dispatch": [], "other": [],
+    }
+
+    telemetry = {
+        "existing_sources_count": 0,
+        "youtube_hits": 0,
+        "vimeo_hits": 0,
+        "brave_hits": 0,
+        "exa_fallback_used": False,
+        "exa_fallback_hits": 0,
+    }
+
+    defendant_clean = defendant.split(",")[0].strip() if defendant else ""
+    jurisdiction_clean = jurisdiction.strip() if jurisdiction else ""
+
+    if not defendant_clean and not jurisdiction_clean:
+        return results, telemetry
+
+    # Build search hints from crime type / jurisdiction queries
+    hints = []
+    if region_id:
+        jq = build_jurisdiction_queries(region_id, defendant_clean, incident_year)
+        # Grab agency names as hints
+        from jurisdiction_portals import get_jurisdiction_config
+        config = get_jurisdiction_config(region_id)
+        for agency in config.get("agencies", []):
+            abbrev = agency.get("abbrev", "")
+            if abbrev:
+                hints.append(abbrev)
+
+    # ----- Step 0: Parse existing sources (free) -----
+    existing = parse_existing_sources(existing_sources_text)
+    results = _merge_results(results, existing)
+    telemetry["existing_sources_count"] = _count_results(existing)
+
+    if telemetry["existing_sources_count"] > 0:
+        print(f"      Step 0: {telemetry['existing_sources_count']} existing sources parsed")
+
+    # ----- Step 1: Video retrieval (YouTube + Vimeo) -----
+    video_results = search_videos(defendant_clean, jurisdiction_clean,
+                                  incident_year, hints)
+    results = _merge_results(results, video_results)
+    telemetry["youtube_hits"] = sum(
+        1 for bucket in video_results.values()
+        for r in bucket if r.get("source") == "youtube"
+    )
+    telemetry["vimeo_hits"] = sum(
+        1 for bucket in video_results.values()
+        for r in bucket if r.get("source") == "vimeo"
+    )
+    print(f"      Step 1: YouTube={telemetry['youtube_hits']} Vimeo={telemetry['vimeo_hits']}")
+
+    # ----- Step 2: Web retrieval (Brave Search) -----
+    web_results = search_web(defendant_clean, jurisdiction_clean,
+                             incident_year, custom_queries)
+    results = _merge_results(results, web_results)
+    telemetry["brave_hits"] = _count_results(web_results)
+    print(f"      Step 2: Brave={telemetry['brave_hits']}")
+
+    # ----- Step 3: Exa fallback (if still empty) -----
+    if _count_results(results) < 3 and ALLOW_EXA_FALLBACK and exa:
+        print(f"      Step 3: Exa fallback (low results)")
+        exa_results = search_exa_fallback(exa, defendant_clean, jurisdiction_clean,
+                                          incident_year)
+        results = _merge_results(results, exa_results)
+        telemetry["exa_fallback_used"] = True
+        telemetry["exa_fallback_hits"] = _count_results(exa_results)
+        print(f"      Step 3: Exa fallback={telemetry['exa_fallback_hits']}")
+
+    # Dedup + cap
+    for key in results:
+        results[key] = _dedup_results(results[key])
+    results = _cap_results(results)
+
+    total = _count_results(results)
+    print(f"      Total relevant: {total}")
+
+    return results, telemetry
+
+
+# =============================================================================
+# STEP 4: LLM ASSESSMENT (with heuristics to skip when obvious)
+# =============================================================================
+
+# Domains that indicate a primary source (not news coverage)
+PRIMARY_SOURCE_DOMAINS = {
+    "courtlistener.com", "unicourt.com", "pacermonitor.com",
+    "broadcastify.com", "openmhz.com",
+}
+
+
+def _has_primary_source(results: Dict) -> bool:
+    """Check if any result URL is from a known primary-source domain or is a PDF."""
+    for bucket in results.values():
+        for r in bucket:
+            url = r.get("url", "").lower()
+            if url.endswith(".pdf"):
+                return True
+            if any(domain in url for domain in PRIMARY_SOURCE_DOMAINS):
+                return True
+    return False
+
+
+def _count_video_types(results: Dict) -> int:
+    """Count how many video artifact types have at least 1 result."""
+    video_buckets = ["body_cam", "interrogation", "court"]
+    return sum(1 for b in video_buckets if results.get(b))
+
+
+def heuristic_assess(results: Dict) -> Dict:
+    """Try to assess without LLM when the answer is obvious.
+
+    Returns an assessment dict if confident, or empty dict if LLM needed.
+    """
+    total = _count_results(results)
+
+    # Obviously insufficient: nothing found
+    if total == 0:
+        return {
+            "body_cam_exists": "NO", "body_cam_sources": [],
+            "interrogation_exists": "NO", "interrogation_sources": [],
+            "court_video_exists": "NO", "court_sources": [],
+            "docket_exists": "NO", "docket_sources": [],
+            "dispatch_911_exists": "NO", "dispatch_sources": [],
+            "primary_source_score": 0, "evidence_depth_score": 0,
+            "artifact_types_found": 0,
+            "overall_assessment": "INSUFFICIENT",
+            "notes": "No results found across any search backend.",
+        }
+
+    # Obviously enough: primary source + multiple video types
+    has_primary = _has_primary_source(results)
+    video_types = _count_video_types(results)
+
+    if has_primary and video_types >= 2:
+        # Build source lists
+        assessment = {
+            "body_cam_exists": "YES" if results.get("body_cam") else "NO",
+            "body_cam_sources": [r["url"] for r in results.get("body_cam", [])[:3]],
+            "interrogation_exists": "YES" if results.get("interrogation") else "NO",
+            "interrogation_sources": [r["url"] for r in results.get("interrogation", [])[:3]],
+            "court_video_exists": "YES" if results.get("court") else "NO",
+            "court_sources": [r["url"] for r in results.get("court", [])[:3]],
+            "docket_exists": "YES" if results.get("docket") else "NO",
+            "docket_sources": [r["url"] for r in results.get("docket", [])[:3]],
+            "dispatch_911_exists": "YES" if results.get("dispatch") else "NO",
+            "dispatch_sources": [r["url"] for r in results.get("dispatch", [])[:3]],
+            "primary_source_score": 75,
+            "evidence_depth_score": 70,
+            "artifact_types_found": sum(1 for b in ["body_cam", "interrogation", "court",
+                                                     "docket", "dispatch"]
+                                        if results.get(b)),
+            "overall_assessment": "ENOUGH",
+            "notes": "Auto-assessed: primary source + multiple video types found.",
+        }
+        return assessment
+
+    # Ambiguous — need LLM
+    return {}
 
 
 def assess_artifacts(llm, case_info: Dict, search_results: Dict) -> Dict:
-    """Use LLM to assess artifact availability."""
-    prompt = f"""Assess whether video artifacts exist for this case:
+    """Use LLM to assess artifact availability with depth metrics."""
+    prompt = f"""You are assessing primary-source evidence for a true crime case.
+We need RAW ARTIFACTS — not news coverage. Read the text snippets carefully.
 
 CASE:
 - Defendant: {case_info.get('defendant', 'Unknown')}
 - Jurisdiction: {case_info.get('jurisdiction', 'Unknown')}
 - Crime: {case_info.get('crime_type', 'Unknown')}
 
-SEARCH RESULTS:
-Body Cam: {json.dumps(search_results.get('body_cam', [])[:5], indent=2)}
-Interrogation: {json.dumps(search_results.get('interrogation', [])[:5], indent=2)}
-Court: {json.dumps(search_results.get('court', [])[:5], indent=2)}
-Portal/Local News: {json.dumps(search_results.get('portal', [])[:5], indent=2)}
-Reddit: {json.dumps(search_results.get('reddit', [])[:5], indent=2)}
-PACER/CourtListener: {json.dumps(search_results.get('pacer', [])[:5], indent=2)}
+Each result below has a URL, title, and a text snippet from the actual page.
+Use the snippet to determine if this is a real primary source or just news.
 
-Based on URLs and titles, return JSON:
+BODY CAM:
+{json.dumps(_slim_results(search_results.get('body_cam', [])), indent=2)}
+
+INTERROGATION:
+{json.dumps(_slim_results(search_results.get('interrogation', [])), indent=2)}
+
+COURT VIDEO:
+{json.dumps(_slim_results(search_results.get('court', [])), indent=2)}
+
+DOCKET/RECORDS:
+{json.dumps(_slim_results(search_results.get('docket', [])), indent=2)}
+
+911/DISPATCH:
+{json.dumps(_slim_results(search_results.get('dispatch', [])), indent=2)}
+
+OTHER:
+{json.dumps(_slim_results(search_results.get('other', [])), indent=2)}
+
+For each artifact type, read the text snippet and determine:
+- "YES" = snippet confirms this IS the actual artifact (video upload, court filing, audio file)
+- "MAYBE" = snippet mentions the artifact exists but this link may be news about it
+- "NO" = not found, or snippet shows this is about a different person/case
+
+CRITICAL: If the snippet text is about a DIFFERENT person or case than {case_info.get('defendant', 'Unknown')},
+mark it NO regardless of the title.
+
+Return JSON:
 {{
     "body_cam_exists": "YES/MAYBE/NO",
     "body_cam_sources": ["url1"],
@@ -291,15 +651,30 @@ Based on URLs and titles, return JSON:
     "interrogation_sources": ["url1"],
     "court_video_exists": "YES/MAYBE/NO",
     "court_sources": ["url1"],
+    "docket_exists": "YES/MAYBE/NO",
+    "docket_sources": ["url1"],
+    "dispatch_911_exists": "YES/MAYBE/NO",
+    "dispatch_sources": ["url1"],
+    "primary_source_score": 0,
+    "evidence_depth_score": 0,
+    "artifact_types_found": 0,
     "overall_assessment": "ENOUGH/BORDERLINE/INSUFFICIENT",
     "notes": "Brief explanation"
 }}
+
+Scoring:
+- primary_source_score (0-100): % of results that are actual primary sources vs news
+- evidence_depth_score (0-100): Could a creator build an EWU-level video from these?
+  100 = bodycam + interrogation + 911 + docket all confirmed available
+  50 = some primary sources but major gaps
+  0 = only news coverage, no raw artifacts
+- artifact_types_found: count of types with YES or MAYBE (max 5)
 
 JSON only:"""
 
     try:
         response = llm.chat.completions.create(
-            model=OPENROUTER_MODEL,
+            model=OPENROUTER_MODEL_ARTIFACT,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.2,
             extra_headers={
@@ -307,32 +682,51 @@ JSON only:"""
                 "X-Title": "NewsToViews-ArtifactHunter",
             }
         )
-        
+
         content = response.choices[0].message.content.strip()
         if "```json" in content:
             content = content.split("```json")[1].split("```")[0]
         elif "```" in content:
             content = content.split("```")[1].split("```")[0]
-        
+
         return json.loads(content)
-        
+
     except Exception as e:
         print(f"      Assessment error: {e}")
         return {}
+
 
 # =============================================================================
 # MAIN PIPELINE
 # =============================================================================
 
-def run_artifact_hunter(limit: int = None):
-    """Hunt for artifacts for cases in CASE ANCHOR."""
+def run_artifact_hunter(limit: int = None, dry_run: bool = False,
+                        post_threshold_only: bool = False,
+                        emit_bundle: bool = True):
+    """Hunt for artifacts for cases in CASE ANCHOR.
+
+    Args:
+        limit: Max cases to process
+        dry_run: Search + assess but don't write to sheet
+        post_threshold_only: Only process cases already marked ENOUGH/BORDERLINE
+        emit_bundle: Write bundle candidate JSON to outputs/ (default True)
+    """
     print("=" * 60)
-    print("NEWS → VIEWS: Artifact Hunter")
+    print("NEWS → VIEWS: Artifact Hunter v3")
+    flags = []
+    if dry_run:
+        flags.append("DRY RUN")
+    if post_threshold_only:
+        flags.append("POST-THRESHOLD ONLY")
+    if emit_bundle:
+        flags.append("EMIT BUNDLES")
+    if flags:
+        print(f"   ({' | '.join(flags)})")
     print("=" * 60)
-    
+
     if not check_credentials():
         return {"error": "Invalid credentials"}
-    
+
     # Initialize
     print("\n[INIT] Connecting...")
     try:
@@ -342,7 +736,7 @@ def run_artifact_hunter(limit: int = None):
     except Exception as e:
         print(f"❌ Init failed: {e}")
         return {"error": str(e)}
-    
+
     # Open sheet
     try:
         sh = gc.open_by_key(SHEET_ID)
@@ -351,125 +745,206 @@ def run_artifact_hunter(limit: int = None):
     except Exception as e:
         print(f"❌ Sheet error: {e}")
         return {"error": str(e)}
-    
+
     # Get cases
     cases = ws_anchor.get_all_records()
     print(f"[INIT] {len(cases)} cases in CASE ANCHOR")
-    
+
     # Get intake data for artifact queries
     intake_records = ws_intake.get_all_records()
     intake_by_id = {str(i): r for i, r in enumerate(intake_records, start=2)}
-    
-    stats = {"processed": 0, "enough": 0, "borderline": 0, "insufficient": 0, "errors": 0}
-    
+
+    stats = {
+        "processed": 0, "enough": 0, "borderline": 0, "insufficient": 0,
+        "errors": 0, "llm_calls": 0, "llm_skipped": 0,
+    }
+
     for row_idx, case in enumerate(cases, start=2):
-        # Skip already assessed
-        if case.get("Footage Assessment", "").strip():
-            continue
-        
+        # Skip logic depends on mode
+        assessment_val = str(case.get("Footage Assessment", "")).strip()
+        if post_threshold_only:
+            # Only process cases already marked ENOUGH or BORDERLINE
+            if assessment_val not in ("ENOUGH", "BORDERLINE"):
+                continue
+        else:
+            # Normal mode: skip already assessed
+            if assessment_val:
+                continue
+
         if limit and stats["processed"] >= limit:
             print(f"\n[LIMIT] Reached {limit} cases")
             break
-        
-        defendant = case.get("Defendant Name(s)", "").strip()
-        jurisdiction = case.get("Jurisdiction", "").strip()
-        intake_id = case.get("Intake_ID", "").strip()
-        
+
+        defendant = str(case.get("Defendant Name(s)", "")).strip()
+        jurisdiction = str(case.get("Jurisdiction", "")).strip()
+        intake_id = str(case.get("Intake_ID", "")).strip()
+
         print(f"\n[{row_idx}] {defendant[:40]}...")
         print(f"    Jurisdiction: {jurisdiction}")
-        
-        # Get custom queries from intake
+
+        # Get custom queries and metadata from intake
         custom_queries = []
         crime_type = ""
         region_id = ""
         incident_year = ""
         if intake_id and intake_id in intake_by_id:
             intake_row = intake_by_id[intake_id]
-            queries_str = intake_row.get("Artifact Queries", "")
+            queries_str = str(intake_row.get("Artifact Queries", ""))
             if queries_str:
                 custom_queries = [q.strip() for q in queries_str.split("|") if q.strip()]
-            crime_type = intake_row.get("Crime Type", "")
-            region_id = (
+            crime_type = str(intake_row.get("Crime Type", ""))
+            region_id = str(
                 intake_row.get("Region_ID")
                 or intake_row.get("Region ID")
                 or intake_row.get("Region")
                 or ""
             )
-            triage_json = intake_row.get("Triage JSON") or intake_row.get("Triage") or ""
+            triage_json = str(intake_row.get("Triage JSON") or intake_row.get("Triage") or "")
             if triage_json:
                 try:
                     triage = json.loads(triage_json)
-                    incident_year = triage.get("incident_year", "")
-                except json.JSONDecodeError:
+                    incident_year = str(triage.get("incident_year", ""))
+                except (json.JSONDecodeError, ValueError):
                     incident_year = ""
-        
-        # Search
-        search_results = search_artifacts(
-            exa,
-            defendant,
-            jurisdiction,
-            crime_type,
-            custom_queries,
+
+        # Get existing sources from sheet
+        existing_sources_text = str(case.get("Footage Sources", ""))
+
+        # Search (multi-step funnel)
+        search_results, telemetry = search_artifacts(
+            defendant=defendant,
+            jurisdiction=jurisdiction,
+            crime_type=crime_type,
+            custom_queries=custom_queries,
             region_id=region_id,
             incident_year=incident_year,
+            existing_sources_text=existing_sources_text,
+            exa=exa,
         )
-        total = sum(len(v) for v in search_results.values())
-        print(f"    Found {total} potential sources")
-        
-        # Assess
-        assessment = assess_artifacts(llm, {
-            "defendant": defendant,
-            "jurisdiction": jurisdiction,
-            "crime_type": crime_type
-        }, search_results)
-        
+
+        # Assess (heuristic first, LLM only when ambiguous)
+        assessment = heuristic_assess(search_results)
+
+        if assessment:
+            stats["llm_skipped"] += 1
+            print(f"    Heuristic: {assessment['overall_assessment']} (LLM skipped)")
+        else:
+            assessment = assess_artifacts(llm, {
+                "defendant": defendant,
+                "jurisdiction": jurisdiction,
+                "crime_type": crime_type,
+            }, search_results)
+            stats["llm_calls"] += 1
+
         if not assessment:
             stats["errors"] += 1
             continue
-        
-        # Update sheet
-        try:
-            ws_anchor.update_cell(row_idx, 7, assessment.get("body_cam_exists", ""))
-            ws_anchor.update_cell(row_idx, 8, assessment.get("interrogation_exists", ""))
-            ws_anchor.update_cell(row_idx, 9, assessment.get("court_video_exists", ""))
-            
-            all_sources = (
-                assessment.get("body_cam_sources", []) +
-                assessment.get("interrogation_sources", []) +
-                assessment.get("court_sources", [])
-            )
-            ws_anchor.update_cell(row_idx, 10, "\n".join(all_sources[:5]))
-            
-            overall = assessment.get("overall_assessment", "INSUFFICIENT")
-            ws_anchor.update_cell(row_idx, 11, overall)
-            
+
+        overall = assessment.get("overall_assessment", "INSUFFICIENT")
+        depth = assessment.get("evidence_depth_score", 0)
+        primary = assessment.get("primary_source_score", 0)
+        types_found = assessment.get("artifact_types_found", 0)
+
+        # ----- Bundle scoring (deterministic, no LLM) -----
+        bundle = score_case_bundle(
+            results=search_results,
+            telemetry=telemetry,
+            case_meta={
+                "defendant": defendant,
+                "jurisdiction": jurisdiction,
+                "incident_year": incident_year,
+                "region_id": region_id,
+            },
+            emit_files=emit_bundle,
+        )
+        bundle_score = bundle.get("bundle_score", 0)
+        bundle_status = bundle.get("status", "HOLD")
+        lane_coverage = bundle.get("component_scores", {}).get("coverage", 0)
+        bundle_gaps = ", ".join(bundle.get("gaps", []))
+
+        # Telemetry line
+        telem_str = (f"yt={telemetry['youtube_hits']} vim={telemetry['vimeo_hits']} "
+                     f"brave={telemetry['brave_hits']} exa={'Y' if telemetry['exa_fallback_used'] else 'N'} "
+                     f"llm={'Y' if assessment.get('notes', '').startswith('Auto') is False else 'N'}")
+        print(f"    [{telem_str}]")
+
+        # Print results
+        icon = "✅" if overall == "ENOUGH" else "⚠️" if overall == "BORDERLINE" else "❌"
+        print(f"    {icon} {overall} (depth={depth}, primary={primary}, types={types_found})")
+        print(f"    📦 Bundle: {bundle_score:.0f} → {bundle_status} "
+              f"(coverage={lane_coverage:.0%}{', gaps: ' + bundle_gaps if bundle_gaps else ''})")
+        if bundle.get("output_path"):
+            print(f"    📁 {bundle['output_path']}")
+
+        # Write to sheet (unless dry run)
+        if dry_run:
+            print(f"    [DRY RUN] Would write to row {row_idx}")
             stats["processed"] += 1
             if overall == "ENOUGH":
                 stats["enough"] += 1
-                print(f"    ✅ ENOUGH")
             elif overall == "BORDERLINE":
                 stats["borderline"] += 1
-                print(f"    ⚠️ BORDERLINE")
             else:
                 stats["insufficient"] += 1
-                print(f"    ❌ INSUFFICIENT")
-                
+            continue
+
+        try:
+            # Columns G-K (7-11): LLM assessment
+            ws_anchor.update_cell(row_idx, 7, assessment.get("body_cam_exists", ""))
+            ws_anchor.update_cell(row_idx, 8, assessment.get("interrogation_exists", ""))
+            ws_anchor.update_cell(row_idx, 9, assessment.get("court_video_exists", ""))
+
+            all_sources = (
+                assessment.get("body_cam_sources", []) +
+                assessment.get("interrogation_sources", []) +
+                assessment.get("court_sources", []) +
+                assessment.get("docket_sources", []) +
+                assessment.get("dispatch_sources", [])
+            )
+            ws_anchor.update_cell(row_idx, 10, "\n".join(all_sources[:8]))
+            ws_anchor.update_cell(row_idx, 11, overall)
+
+            # Columns L-P (12-16): artifact details
+            ws_anchor.update_cell(row_idx, 12, assessment.get("docket_exists", ""))
+            ws_anchor.update_cell(row_idx, 13, assessment.get("dispatch_911_exists", ""))
+            ws_anchor.update_cell(row_idx, 14, str(primary))
+            ws_anchor.update_cell(row_idx, 15, str(depth))
+
+            # Column P (16): Bundle score + status
+            bundle_cell = f"{bundle_score:.0f} | {bundle_status}"
+            ws_anchor.update_cell(row_idx, 16, bundle_cell)
+
+            # Columns Q-S (17-19): Bundle details
+            ws_anchor.update_cell(row_idx, 17, f"{lane_coverage:.0%}")
+            ws_anchor.update_cell(row_idx, 18, bundle_gaps or "none")
+            ws_anchor.update_cell(row_idx, 19, bundle.get("output_path", ""))
+
+            stats["processed"] += 1
+            if overall == "ENOUGH":
+                stats["enough"] += 1
+            elif overall == "BORDERLINE":
+                stats["borderline"] += 1
+            else:
+                stats["insufficient"] += 1
+
         except Exception as e:
             print(f"    Sheet update error: {e}")
             stats["errors"] += 1
-        
+
         time.sleep(1)
-    
+
     # Report
     print("\n" + "=" * 60)
     print("COMPLETE")
     print("=" * 60)
-    print(f"Processed:    {stats['processed']}")
-    print(f"  ENOUGH:     {stats['enough']}")
-    print(f"  BORDERLINE: {stats['borderline']}")
+    print(f"Processed:      {stats['processed']}")
+    print(f"  ENOUGH:       {stats['enough']}")
+    print(f"  BORDERLINE:   {stats['borderline']}")
     print(f"  INSUFFICIENT: {stats['insufficient']}")
-    print(f"Errors:       {stats['errors']}")
-    
+    print(f"LLM calls:      {stats['llm_calls']}")
+    print(f"LLM skipped:    {stats['llm_skipped']} (heuristic)")
+    print(f"Errors:         {stats['errors']}")
+
     return stats
 
 # =============================================================================
@@ -477,10 +952,15 @@ def run_artifact_hunter(limit: int = None):
 # =============================================================================
 
 def main():
-    parser = argparse.ArgumentParser(description="Artifact Hunter")
-    parser.add_argument("--test", action="store_true", help="Test mode (3 cases)")
+    parser = argparse.ArgumentParser(description="Artifact Hunter v3")
     parser.add_argument("--limit", type=int, help="Max cases to process")
     parser.add_argument("--check", action="store_true", help="Check credentials only")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="Search + assess but don't write to sheet")
+    parser.add_argument("--post-threshold-only", action="store_true",
+                        help="Only process cases already marked ENOUGH/BORDERLINE")
+    parser.add_argument("--no-bundle", action="store_true",
+                        help="Skip bundle candidate JSON output")
 
     args = parser.parse_args()
 
@@ -488,12 +968,12 @@ def main():
         check_credentials()
         return
 
-    effective_limit = args.limit
-    if args.test:
-        effective_limit = 3
-        print("[TEST] Test mode — processing max 3 cases")
-
-    run_artifact_hunter(limit=effective_limit)
+    run_artifact_hunter(
+        limit=args.limit,
+        dry_run=args.dry_run,
+        post_threshold_only=args.post_threshold_only,
+        emit_bundle=not args.no_bundle,
+    )
 
 
 if __name__ == "__main__":

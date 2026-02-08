@@ -19,6 +19,19 @@
 
 ---
 
+## Goals & Intentions (v3 — Feb 2026)
+
+The pipeline is being evolved from a **news discovery tool** into a **primary-source artifact retrieval engine**. The goal is to find not just articles about crimes, but the actual recoverable evidence: bodycam footage, interrogation recordings, 911/dispatch audio, court filings, and docket documents — the raw material needed to produce EWU/Dr. Insanity-tier true crime content.
+
+**Key shifts**:
+- **From semantic search to multi-backend funnel**: Exa is great for finding articles but expensive and noisy for hunting specific artifacts. The new architecture uses YouTube/Vimeo for video, Brave Search for documents/records, and Exa only as a fallback.
+- **From URL-only assessment to content-aware assessment**: The LLM now sees actual page snippets (not just URLs), reducing hallucinated confidence scores.
+- **From single-model to model split**: Heavy model for triage (reasoning matters), light model (Gemini Flash) for artifact assessment (classification is simpler).
+- **From blind search to cost-ordered funnel**: Free sources first (existing sheet data), then cheap APIs (YouTube/Vimeo), then moderate (Brave), then expensive (Exa). Skip LLM entirely when heuristics suffice.
+- **From news-only to primary sources**: Docket filings, probable cause affidavits, 911 call audio, dispatch recordings — these are what differentiate surface-level coverage from deep investigative content.
+
+---
+
 ## 1. System Overview
 
 NEWS → VIEWS is a discovery pipeline for a true crime content creator. It finds criminal cases with recoverable video artifacts (bodycam, interrogation, surveillance, court footage), triages them for narrative quality, and tracks them through a Google Sheets workflow toward production.
@@ -59,8 +72,11 @@ Regions & Sources (Google Sheet config)
 | Service | Purpose | Auth |
 |---------|---------|------|
 | Google Sheets | Workflow orchestration, status tracking | Service account JSON |
-| Exa API | Semantic web search for articles and artifacts | API key |
-| OpenRouter | LLM access (currently deepseek/deepseek-v3.2) | API key |
+| Exa API | Semantic web search for intake discovery | API key |
+| Brave Search API | Keyword web search for artifact hunting | API key |
+| YouTube Data API | Video search for bodycam/interrogation/court footage | API key |
+| Vimeo API | Video search (supplement to YouTube) | Access token |
+| OpenRouter | LLM access (model split: intake vs artifact) | API key |
 
 ---
 
@@ -104,14 +120,31 @@ The following columns MUST exist in this exact order. Scripts write by column in
 | I | Court Video | artifact_hunter (col 9) |
 | J | Source URLs | artifact_hunter (col 10) |
 | K | Footage Assessment | artifact_hunter (col 11) |
+| L | Docket/Court Records | artifact_hunter (col 12) |
+| M | 911/Dispatch Audio | artifact_hunter (col 13) |
+| N | Primary Source Score | artifact_hunter (col 14) |
+| O | Evidence Depth Score | artifact_hunter (col 15) |
+| P | Search Telemetry | artifact_hunter (col 16) |
 
 ### Environment Variables (required)
 
 ```
-SHEET_ID          — Google Sheet ID (from URL)
-EXA_API_KEY       — Exa API key
-OPENROUTER_API_KEY — OpenRouter API key
-SERVICE_ACCOUNT_PATH — Path to Google service account JSON (default: ./service_account.json)
+SHEET_ID               — Google Sheet ID (from URL)
+EXA_API_KEY            — Exa API key (intake discovery)
+OPENROUTER_API_KEY     — OpenRouter API key
+SERVICE_ACCOUNT_PATH   — Path to Google service account JSON (default: ./service_account.json)
+```
+
+### Environment Variables (optional — artifact hunting backends)
+
+```
+BRAVE_API_KEY          — Brave Search API key
+YOUTUBE_API_KEY        — YouTube Data API v3 key
+VIMEO_ACCESS_TOKEN     — Vimeo API access token
+OPENROUTER_MODEL_INTAKE  — LLM for triage (default: OPENROUTER_MODEL or deepseek/deepseek-v3.2)
+OPENROUTER_MODEL_ARTIFACT — LLM for artifact assessment (default: google/gemini-2.0-flash-001)
+MIN_PRESCORE           — Minimum pre-score for LLM triage (default: 20)
+ALLOW_EXA_FALLBACK     — Use Exa as fallback in artifact_hunter (default: true)
 ```
 
 ### Rules
@@ -131,48 +164,73 @@ SERVICE_ACCOUNT_PATH — Path to Google service account JSON (default: ./service
 ### `exa_pipeline.py` (Pass 1 — News Intake)
 
 - **Entry**: `run_pipeline(test_mode, single_region)`
-- **Flow**: Load regions from sheet → Exa search per region → LLM triage per article → Write to NEWS INTAKE → Promote PASS cases to CASE ANCHOR
+- **Flow**: Load regions → Exa search → Pre-score → LLM triage → Write to NEWS INTAKE → Promote PASS cases to CASE ANCHOR
 - **Key functions**:
   - `search_region()` — Exa semantic search with date/content filtering
   - `triage_article()` — LLM structured JSON triage (PASS/KILL)
-  - `append_intake_row()` — Write to NEWS INTAKE
+  - `append_intake_row()` — Write to NEWS INTAKE (includes prescore cols O-P)
   - `promote_to_anchor()` — Copy PASS case to CASE ANCHOR
-- **Config knobs**: `MAX_RESULTS_PER_REGION`, `MIN_ARTICLE_LENGTH`, `DEFAULT_START_DATE`, `DEFAULT_END_DATE`
-- **CLI flags**: `--test` (3 regions), `--region <ID>` (single region), `--limit <N>` (max articles to triage), `--check` (validate credentials)
-- **LLM model**: Set via `OPENROUTER_MODEL` env var (default: `deepseek/deepseek-v3.2`)
+- **Config knobs**: `MAX_RESULTS_PER_REGION`, `MIN_ARTICLE_LENGTH`, `DEFAULT_START_DATE`, `DEFAULT_END_DATE`, `MIN_PRESCORE`
+- **LLM model**: Set via `OPENROUTER_MODEL_INTAKE` (falls back to `OPENROUTER_MODEL`, default: `deepseek/deepseek-v3.2`)
 
-### `artifact_hunter.py` (Pass 2 — Footage Discovery)
+### `artifact_hunter.py` (Pass 2 — Artifact Discovery, v3)
 
-- **Entry**: `run_artifact_hunter(limit)`
-- **Flow**: Read CASE ANCHOR → For each unassessed case → Search for artifacts → LLM assessment → Write results back to CASE ANCHOR
+- **Entry**: `run_artifact_hunter(limit, dry_run)`
+- **Flow**: Read CASE ANCHOR → For each unassessed case → Multi-step search funnel → Heuristic or LLM assessment → Write results back
+- **Search funnel** (cost-ordered):
+  1. **Step 0**: Parse existing sources from sheet (free)
+  2. **Step 1**: YouTube + Vimeo API search (video-specific)
+  3. **Step 2**: Brave Search web search (keyword, bucketized)
+  4. **Step 3**: Exa fallback (only if <3 results found, capped at 2 queries)
+  5. **Step 4**: Heuristic skip or LLM assessment
 - **Key functions**:
-  - `search_artifacts()` — Multi-source artifact search (video platforms, Reddit, PACER/CourtListener, jurisdiction portals)
-  - `assess_artifacts()` — LLM assessment of artifact availability
-  - `search_reddit_cases()` — Reddit-specific case discussion search
-  - `search_pacer()` — CourtListener/PACER record search
-- **CLI flags**: `--test` (3 cases), `--limit <N>` (max cases to process), `--check` (validate credentials)
-- **Writes to**: CASE ANCHOR columns G-K (by cell index)
+  - `parse_existing_sources()` — Extract URLs already in sheet
+  - `search_videos()` — YouTube + Vimeo via `search_backends.py`
+  - `search_web()` — Brave Search with query buckets (bodycam, interrogation, court, docket, dispatch)
+  - `search_exa_fallback()` — Optional Exa when other backends return sparse results
+  - `heuristic_assess()` — Skip LLM when evidence is obviously ENOUGH or INSUFFICIENT
+  - `assess_artifacts()` — LLM assessment with expanded schema (primary_source_score, evidence_depth_score)
+- **Caps**: `MAX_RESULTS_PER_BUCKET = 6`, `MAX_TOTAL_RESULTS_FOR_LLM = 25`
+- **Writes to**: CASE ANCHOR columns G-P (by cell index)
+- **LLM model**: Set via `OPENROUTER_MODEL_ARTIFACT` (default: `google/gemini-2.0-flash-001`)
+- **CLI flags**: `--limit N`, `--dry-run`, `--check`
+- **Telemetry**: Per-case dict tracking youtube_hits, vimeo_hits, brave_hits, exa_fallback_used, llm_used
+
+### `search_backends.py` (Search API Clients)
+
+- **Purpose**: Unified interface for Brave Search, YouTube Data API v3, and Vimeo API
+- **Key functions**:
+  - `web_search_brave(query, num)` — Brave Search API
+  - `youtube_search(defendant, jurisdiction, incident_year, hints)` — Multi-query YouTube search with dedup
+  - `vimeo_search(defendant, jurisdiction, incident_year, hints)` — Multi-query Vimeo search with dedup
+  - `check_search_credentials()` — Returns dict of which backends are configured
+- **Shared**: All functions return consistent `{"url", "title", "snippet", "source"}` schema
+- **Retry**: Exponential backoff for 429/5xx errors, 3 attempts max
+
+### `evidence_prescore.py` (Pre-LLM Gating)
+
+- **Purpose**: Score articles for artifact likelihood *before* LLM triage to reduce token spend
+- **Key function**: `evidence_prescore(article_text, article_url, region_id) -> Dict`
+- **Scoring**: keyword hits (+15), video URLs (+20), agency match (+10), lifecycle indicators (+5), sunshine state bonus (+10), court video bonus (+10)
+- **Sunshine states**: FL, TX, AZ, WA, OH, GA, UT — states with loosest public records access
 
 ### `jurisdiction_portals.py` (Knowledge Layer)
 
 - **Purpose**: Static registry of 20 regions across 6 states with agency details, YouTube channels, transparency portals, court info, news domains
-- **Key data**: `JURISDICTION_PORTALS` dict, `TRUE_CRIME_CHANNELS` list
-- **Helper functions**: `build_jurisdiction_queries()`, `get_agency_youtube_channels()`, `get_transparency_portals()`, `get_search_domains_for_region()`
+- **Key data**: `JURISDICTION_PORTALS` dict, `TRUE_CRIME_CHANNELS` list, `SUNSHINE_STATES` set, `RECORDS_DOMAINS`, `DISPATCH_DOMAINS`
+- **Helper functions**: `build_jurisdiction_queries()` (6 buckets: bodycam, interrogation, court, news, docket, dispatch), `is_sunshine_state()`, `get_agency_youtube_channels()`, `get_transparency_portals()`, `get_search_domains_for_region()`
 - **States covered**: CA (5 regions), FL (4), AZ (3), WA (2), CO (3), TX (3)
 
 ### File Dependencies
 
 ```
 exa_pipeline.py
-  └── (no local imports — standalone)
+  └── evidence_prescore.py
+        └── jurisdiction_portals.py (is_sunshine_state, has_court_video)
 
 artifact_hunter.py
-  └── jurisdiction_portals.py
-        └── build_jurisdiction_queries()
-        └── get_agency_youtube_channels()
-        └── get_transparency_portals()
-        └── get_search_domains_for_region()
-        └── extract_domain()
+  └── search_backends.py (web_search_brave, youtube_search, vimeo_search)
+  └── jurisdiction_portals.py (build_jurisdiction_queries, get_agency_youtube_channels, ...)
 ```
 
 ---
@@ -187,9 +245,25 @@ Sheets is the "source of truth" because the operator is non-technical and needs 
 
 Single billing endpoint, model flexibility — can switch between deepseek, gpt-4o-mini, claude models without code changes. Just change `OPENROUTER_MODEL` in `.env`.
 
-### Why Exa (not Google/Bing search)?
+### Why Exa for intake (not Google/Bing search)?
 
 Exa's semantic search returns higher-quality crime article matches than keyword search. Supports `include_domains`, `start_published_date`, `end_published_date` filters that are critical for targeted discovery. Also returns full text content in a single call.
+
+### Why multi-backend search for artifacts (not Exa-only)?
+
+Exa is great for semantic article discovery but expensive and noisy for artifact hunting. Replacing it with Brave Search + YouTube + Vimeo for Pass 2:
+- **YouTube/Vimeo APIs** are purpose-built for video discovery — the exact artifact type we need
+- **Brave Search** is cheaper ($5/1k queries or free Vertex tier) and better for keyword-specific document hunting (dockets, 911 audio, court filings)
+- **Exa stays as optional fallback** — only triggered when primary backends return <3 results, capped at 2 queries per case
+- **Cost reduction**: Brave + YouTube + Vimeo queries are cheaper per-call than Exa semantic search
+
+### Why model split (intake vs artifact)?
+
+Triage (PASS/KILL decision on article quality) benefits from a reasoning-capable model. Artifact assessment is simpler classification — just evaluating whether search results contain what we need. Using a lighter/cheaper model (Gemini Flash) for artifact assessment cuts LLM costs ~70% on Pass 2 without quality loss.
+
+### Why heuristic assessment skip?
+
+Two obvious cases don't need LLM evaluation: (1) Zero search results → auto INSUFFICIENT; (2) Primary source domain + 2+ video artifact types → auto ENOUGH. Skipping the LLM call in these cases saves tokens and latency.
 
 ### Why two-pass (not single-pass)?
 
@@ -211,37 +285,36 @@ Pass 1 (exa_pipeline) is **breadth** — find articles, triage for narrative qua
 
 ---
 
-### Phase 1: Evidence-First Pre-Score Gating (HIGHEST ROI)
+### Phase 1: Evidence-First Pre-Score Gating ✅ COMPLETE
 
 **Goal**: Score cases for artifact likelihood *before* LLM triage to avoid wasting credits on low-artifact cases.
 
-**What to build**:
+**Delivered**:
+- `evidence_prescore.py` — Pre-scores articles (0-100) based on keyword hits, video URLs, agency matches, lifecycle indicators, sunshine state bonus, court video bonus
+- Integrated into `exa_pipeline.py` — articles below `MIN_PRESCORE` (default 20) get auto-KILL
+- Sunshine state bonus applies to FL, TX, AZ, WA, OH, GA, UT (states with loosest public records access)
+- Prescore and matched keywords written to NEWS INTAKE cols O-P
 
-1. **`evidence_prescore.py`** — New module. Takes article text + URL + metadata, returns `artifact_pre_score` (0-100) based on:
-   - Keyword hits: "bodycam", "BWC", "body-worn camera", "custodial interview", "interrogation video", "surveillance footage", "trial livestream", "dashcam" → +15 each
-   - Video platform URL presence in article text (youtube.com, vimeo.com) → +20
-   - Jurisdiction/agency token matches from `jurisdiction_portals.py` → +10
-   - Lifecycle indicators: "sentenced", "convicted", "plea", "trial", "verdict" → +5 each (case is far enough along that artifacts are likely released)
-   - Florida region bonus → +10 (Sunshine Law = better records access)
-   - Court has video capability (`has_court_video()`) → +10
+---
 
-2. **Integration into `exa_pipeline.py`**:
-   - Call `evidence_prescore()` BEFORE `triage_article()`
-   - Add `Artifact_Pre_Score` column to NEWS INTAKE (col O — appended, does not shift existing columns)
-   - Add `Evidence_Intent_Matches` column (col P — pipe-delimited matched keywords)
-   - Only send articles with `artifact_pre_score >= 20` to LLM triage (configurable threshold via `MIN_PRESCORE` env var, default 20)
-   - Articles below threshold get auto-KILL with `kill_reason: "Low artifact likelihood (pre-score: {score})"`
+### Phase 1.5: Multi-Backend Artifact Search ✅ COMPLETE
 
-3. **New .env vars**:
-   ```
-   MIN_PRESCORE=20           # Minimum pre-score to proceed to LLM triage
-   ```
+**Goal**: Replace Exa-only artifact hunting with a cost-ordered, multi-backend search funnel that prioritizes free and cheap sources before expensive ones.
 
-**Expected impact**: 30-50% reduction in LLM triage calls. Higher artifact yield on PASS cases.
-
-**Validation**: Run `--test` mode, compare pre-score distribution. Cases that score <20 should be ones you wouldn't have wanted to triage anyway.
-
-**Invariant check**: NEWS INTAKE columns A-N unchanged. New columns appended only.
+**Delivered**:
+- `search_backends.py` — Unified clients for Brave Search, YouTube Data API, Vimeo API (stdlib urllib, no heavy deps)
+- `artifact_hunter.py` v3 — Complete rewrite with 5-step search funnel:
+  1. Parse existing sources (free)
+  2. YouTube + Vimeo video search
+  3. Brave Search web search (bucketized: bodycam, interrogation, court, docket, dispatch)
+  4. Exa fallback (optional, <3 results trigger, capped at 2 queries)
+  5. Heuristic or LLM assessment
+- Heuristic skip: 0 results → auto INSUFFICIENT; primary source + 2+ video types → auto ENOUGH
+- Model split: `OPENROUTER_MODEL_ARTIFACT` (Gemini Flash) for cheap artifact assessment
+- Dry-run mode (`--dry-run`) for testing without sheet writes
+- Per-case telemetry (youtube_hits, vimeo_hits, brave_hits, exa_fallback_used, llm_used)
+- Expanded CASE ANCHOR schema: cols L-P for docket, dispatch, primary_source_score, evidence_depth_score, telemetry
+- `jurisdiction_portals.py` updated with docket/dispatch query buckets, `RECORDS_DOMAINS`, `DISPATCH_DOMAINS`
 
 ---
 
@@ -301,25 +374,26 @@ Pass 1 (exa_pipeline) is **breadth** — find articles, triage for narrative qua
 
 ---
 
-### Phase 4: Deterministic Connectors (Future)
+### Phase 4: Deterministic Connectors (Future — partially delivered)
 
-**Goal**: Supplement probabilistic Exa search with reliable API-based discovery.
+**Goal**: Supplement probabilistic search with reliable API-based discovery.
 
-**Connectors to build (in priority order)**:
+**Delivered in Phase 1.5**:
+- ✅ YouTube Data API connector (via `search_backends.py`)
+- ✅ Vimeo API connector (via `search_backends.py`)
+- ✅ Brave Search for docket/court record keyword search
 
-1. **YouTube Data API connector** — Enumerate uploads from official agency channels in `jurisdiction_portals.py`. Match against defendant names/case numbers. Highest ROI because agencies frequently publish critical incident videos.
-   - Needs: YouTube Data API key, quota management (10,000 units/day)
-   - Output: `ArtifactRecord` with source_tier="official"
+**Remaining**:
 
-2. **CourtListener API connector** — Structured query against CourtListener for case records, transcripts, audio.
+1. **CourtListener API connector** — Structured query against CourtListener for case records, transcripts, audio.
    - Needs: Free API access (no key required for basic)
    - Output: Case metadata, docket entries, linked documents
+
+2. **Agency channel enumeration** — Use YouTube Data API `playlistItems` to enumerate uploads from official agency channels in `jurisdiction_portals.py`, matching against defendant names/case numbers (source_tier="official").
 
 3. **Caching layer** — SQLite database persisted to Google Drive (Colab-friendly). Store discovered artifacts so repeated runs don't re-search.
    - Tables: `cases`, `artifacts`, `search_runs`
    - On each run: check cache first, only search for cases with no recent results
-
-**These are Phase 4 because they require new API integrations and more complex error handling. Do not attempt until Phases 1-3 are stable.**
 
 ---
 
@@ -390,12 +464,12 @@ uploaded = files.upload()  # Upload service_account.json
 ### Moderate
 
 - **JSON parsing is fragile**: Both triage and assessment strip markdown code fences but don't handle all LLM output variations. Consider a retry-with-repair pattern.
-- **No budget caps**: Nothing stops the pipeline from burning through Exa/OpenRouter credits if pointed at many regions. → **Phase 1 pre-score gating helps; Phase 5 instrumentation makes it visible.**
-- **`assess_artifacts()` gets messy search results**: Reddit and PACER searches often return irrelevant results that confuse the LLM assessment. Consider filtering by relevance score before sending to LLM.
+- **Budget caps partial**: Pre-score gating limits LLM triage calls; artifact_hunter caps Exa fallback at 2 queries and total results at 25 per case. But no global credit budget exists yet. → Phase 5 instrumentation.
+- **Brave requires key**: Set `BRAVE_API_KEY` env var. Free tier: 2,000 queries/month. Without it, artifact_hunter falls through to Exa-only.
 
 ### Low Priority
 
-- **`TRUE_CRIME_CHANNELS` in jurisdiction_portals.py not used**: The list exists but no code searches these channels. → Phase 4 YouTube connector would use this.
+- **`TRUE_CRIME_CHANNELS` in jurisdiction_portals.py not used**: The list exists but no code searches these channels. → Phase 4 agency enumeration would use this.
 - **Some YouTube channel URLs in jurisdiction_portals.py appear to be placeholders** (e.g., `@ABORINGDYSTOPIA` appears multiple times for different agencies — likely copy-paste errors). Audit and fix.
 
 ---
@@ -409,6 +483,18 @@ uploaded = files.upload()  # Upload service_account.json
   WHY: Enable Claude Code to iterate safely with full project context
   VALIDATED: Manual review of codebase against documented invariants
   AFFECTS: No code changes — documentation only
+
+[2026-02-07] Phase 1: evidence_prescore.py + exa_pipeline integration
+  WHY: Reduce LLM triage costs by gating articles with deterministic pre-score
+  VALIDATED: Python compile clean, integrated into exa_pipeline main loop
+  AFFECTS: exa_pipeline.py, evidence_prescore.py (new), jurisdiction_portals.py (sunshine states)
+
+[2026-02-07] Phase 1.5: Multi-backend artifact search (v3 rewrite)
+  WHY: Replace expensive Exa-only artifact hunting with cost-ordered funnel (YouTube → Vimeo → Brave → Exa fallback)
+  VALIDATED: All 3 files compile clean (search_backends.py, artifact_hunter.py, exa_pipeline.py)
+  AFFECTS: artifact_hunter.py (complete rewrite), search_backends.py (new), exa_pipeline.py (model split),
+           jurisdiction_portals.py (docket/dispatch queries, RECORDS_DOMAINS, DISPATCH_DOMAINS),
+           CASE ANCHOR schema expanded to cols L-P
 ```
 
 <!-- 

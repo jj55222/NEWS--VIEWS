@@ -3,6 +3,9 @@
 service_account.json
 *.json
 
+# Bundle outputs (ephemeral analysis artifacts)
+outputs/
+
 # Python
 __pycache__/
 *.pyc

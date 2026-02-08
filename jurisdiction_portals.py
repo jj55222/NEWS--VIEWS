@@ -1,5 +1,5 @@
 """
-Jurisdiction-specific portals for video evidence discovery.
+Jurisdiction-specific portals for video evidence and primary-source document discovery.
 
 Maps regions to:
 - Police department transparency portals
@@ -7,6 +7,8 @@ Maps regions to:
 - Court video systems
 - FOIA/public records portals
 - Local news stations with crime coverage
+- Court clerk / docket search systems
+- 911 dispatch / CAD record portals
 """
 
 from urllib.parse import urlparse
@@ -732,9 +734,16 @@ def get_transparency_portals(region_id: str) -> list:
 
 def build_jurisdiction_queries(region_id: str, defendant: str,
                                incident_year: str = None) -> dict:
-    """Build targeted search queries using jurisdiction knowledge."""
+    """Build targeted search queries using jurisdiction knowledge.
+
+    Returns query buckets for bodycam, interrogation, court, news,
+    docket (primary-source documents), and dispatch (911/CAD records).
+    """
     config = get_jurisdiction_config(region_id)
-    queries = {"bodycam": [], "interrogation": [], "court": [], "news": []}
+    queries = {
+        "bodycam": [], "interrogation": [], "court": [],
+        "news": [], "docket": [], "dispatch": [],
+    }
 
     if not config:
         return queries
@@ -744,13 +753,16 @@ def build_jurisdiction_queries(region_id: str, defendant: str,
 
     year_str = f" {incident_year}" if incident_year else ""
 
+    # --- Bodycam: direct evidence retrieval language ---
     for agency in agency_names[:2]:
         queries["bodycam"].append(f"{agency} bodycam {defendant}{year_str}")
-        queries["bodycam"].append(f"{defendant} {agency} body camera footage")
+        queries["bodycam"].append(f"{defendant} {agency} body camera release evidence")
 
-    queries["interrogation"].append(f"{defendant} interrogation interview")
-    queries["interrogation"].append(f"{defendant} police interview confession")
+    # --- Interrogation: direct retrieval, not FOIA request ---
+    queries["interrogation"].append(f"{defendant} interrogation video full")
+    queries["interrogation"].append(f"{defendant} police interview recording released")
 
+    # --- Court ---
     queries["court"].append(f"{defendant} trial court video")
     queries["court"].append(f"{defendant} sentencing hearing")
 
@@ -758,16 +770,63 @@ def build_jurisdiction_queries(region_id: str, defendant: str,
     if state:
         queries["court"].append(f"{defendant} {state} trial verdict")
 
+    # --- Docket / primary-source documents ---
+    queries["docket"].append(f"{defendant} probable cause affidavit{year_str}")
+    queries["docket"].append(f"{defendant} criminal complaint filing{year_str}")
+    queries["docket"].append(f"{defendant} arrest affidavit incident report")
+
+    for court in config.get("courts", []):
+        court_name = court.get("name", "")
+        if court_name:
+            queries["docket"].append(f"{defendant} {court_name} docket case number")
+
+    # CourtListener / PACER scoped
+    queries["docket"].append(f"site:courtlistener.com {defendant} {config.get('name', '')}")
+
+    # --- Dispatch / 911 ---
+    for agency in agency_names[:1]:
+        queries["dispatch"].append(f"{defendant} 911 call audio released{year_str}")
+        queries["dispatch"].append(f"{agency} dispatch audio {defendant}")
+
+    # --- News ---
     for domain in config.get("search_domains", [])[:2]:
         queries["news"].append(f"site:{domain} {defendant}")
 
     return queries
 
 
+# Domains that host primary-source court and docket records
+RECORDS_DOMAINS = [
+    "courtlistener.com",
+    "unicourt.com",
+    "pacermonitor.com",
+    "law.justia.com",
+    "casetext.com",
+]
+
+# Domains that host 911 / dispatch audio
+DISPATCH_DOMAINS = [
+    "broadcastify.com",
+    "openmhz.com",
+]
+
+
 def is_florida_case(region_id: str) -> bool:
     """Check if region is in Florida (stronger public records)."""
     config = get_jurisdiction_config(region_id)
     return config.get("state") == "FL"
+
+
+# States with the loosest public records access for law enforcement artifacts.
+# These jurisdictions make bodycam, dashcam, interrogation, and court footage
+# significantly easier to obtain than average.
+SUNSHINE_STATES = {"FL", "TX", "AZ", "WA", "OH", "GA", "UT"}
+
+
+def is_sunshine_state(region_id: str) -> bool:
+    """Check if region is in a sunshine state (loose artifact access laws)."""
+    config = get_jurisdiction_config(region_id)
+    return config.get("state", "") in SUNSHINE_STATES
 
 
 def has_court_video(region_id: str) -> bool:

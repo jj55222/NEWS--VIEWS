@@ -24,6 +24,8 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
+from evidence_prescore import evidence_prescore
+
 # =============================================================================
 # CONFIGURATION (from environment)
 # =============================================================================
@@ -33,7 +35,10 @@ EXA_API_KEY = os.getenv("EXA_API_KEY")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
 # Optional overrides
-OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-v3.2")
+OPENROUTER_MODEL = os.getenv(
+    "OPENROUTER_MODEL_INTAKE",
+    os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-v3.2"),
+)
 SERVICE_ACCOUNT_PATH = os.getenv("SERVICE_ACCOUNT_PATH", "./service_account.json")
 
 # Search defaults
@@ -41,6 +46,9 @@ DEFAULT_START_DATE = os.getenv("DEFAULT_START_DATE", "2018-01-01")
 DEFAULT_END_DATE = os.getenv("DEFAULT_END_DATE", "2023-06-01")
 MAX_RESULTS_PER_REGION = int(os.getenv("MAX_RESULTS_PER_REGION", "30"))
 MIN_ARTICLE_LENGTH = int(os.getenv("MIN_ARTICLE_LENGTH", "500"))
+
+# Pre-score gating threshold (Phase 1)
+MIN_PRESCORE = int(os.getenv("MIN_PRESCORE", "20"))
 
 # Test mode regions
 TEST_REGIONS = ["SF", "MD", "PPD"]
@@ -205,9 +213,12 @@ ENHANCED_TRIAGE_SCHEMA = {
     "verdict": "KILL",
     "kill_reason": "",
     "artifact_queries": [
-        "{defendant} {agency} bodycam {year}",
+        "{defendant} probable cause affidavit {agency}",
+        "{defendant} {agency} bodycam release {year}",
+        "{defendant} criminal docket filing {jurisdiction}",
+        "{defendant} 911 call audio {year}",
+        "{defendant} interrogation video released",
         "{case_number} court video",
-        "{victim} {defendant} trial",
     ],
 }
 
@@ -284,42 +295,50 @@ def get_existing_urls(ws_intake) -> set:
         return set()
 
 
-def append_intake_row(ws_intake, region_id: str, article: Dict, triage: Dict) -> bool:
-    """Append row to NEWS INTAKE."""
+def append_intake_row(ws_intake, region_id: str, article: Dict, triage: Dict,
+                      prescore: int = 0, prescore_matches: str = "") -> bool:
+    """Append row to NEWS INTAKE.
+
+    Columns A-N are the original schema. Columns O-P are Phase 1 additions:
+      O: Artifact_Pre_Score   — integer score from evidence_prescore
+      P: Evidence_Intent_Matches — pipe-delimited matched keywords
+    """
     try:
         pub_year = ""
         if article.get("published_date"):
             match = re.search(r"(20\d{2})", article["published_date"])
             if match:
                 pub_year = match.group(1)
-        
+
         url = article.get("url", "")
         outlet = ""
         if url:
             match = re.search(r"https?://(?:www\.)?([^/]+)", url)
             if match:
                 outlet = match.group(1)
-        
+
         row = [
-            region_id,
-            outlet,
-            article.get("title", "")[:200],
-            url,
-            pub_year,
-            json.dumps(triage) if triage else "",
-            triage.get("story_summary", ""),
-            triage.get("why_disturbing", ""),
-            triage.get("crime_type", ""),
-            triage.get("verdict", "KILL"),
-            "",
-            triage.get("verdict", "KILL"),
-            str(triage.get("viability_score", 0)),
-            "|".join(triage.get("artifact_queries", [])),
+            region_id,                                         # A: Region_ID
+            outlet,                                            # B: Outlet
+            article.get("title", "")[:200],                    # C: Headline
+            url,                                               # D: Article URL
+            pub_year,                                          # E: Pub Year
+            json.dumps(triage) if triage else "",               # F: Triage JSON
+            triage.get("story_summary", ""),                    # G: Story Summary
+            triage.get("why_disturbing", ""),                   # H: Why Disturbing
+            triage.get("crime_type", ""),                       # I: Crime Type
+            triage.get("verdict", "KILL"),                      # J: LLM Verdict
+            "",                                                # K: Human Override
+            triage.get("verdict", "KILL"),                      # L: Final Verdict
+            str(triage.get("viability_score", 0)),              # M: Viability Score
+            "|".join(triage.get("artifact_queries", [])),       # N: Artifact Queries
+            str(prescore),                                     # O: Artifact_Pre_Score
+            prescore_matches,                                  # P: Evidence_Intent_Matches
         ]
-        
+
         ws_intake.append_row(row, value_input_option="RAW")
         return True
-        
+
     except Exception as e:
         print(f"      Sheet error: {e}")
         return False
@@ -353,9 +372,17 @@ def promote_to_anchor(ws_anchor, region_id: str, article: Dict,
 # =============================================================================
 
 def run_pipeline(test_mode: bool = False, single_region: str = None, limit: int = None):
-    """Main pipeline execution."""
+    """Main pipeline execution.
+
+    Args:
+        test_mode: Process only test regions
+        single_region: Process only this region
+        limit: Max total articles to process (across all regions)
+    """
     print("=" * 60)
     print("NEWS → VIEWS: Exa Pipeline")
+    if limit:
+        print(f"   (limit: {limit} articles)")
     print("=" * 60)
     
     # Check credentials
@@ -409,7 +436,8 @@ def run_pipeline(test_mode: bool = False, single_region: str = None, limit: int 
     # Stats
     stats = {
         "regions": 0, "articles": 0, "triaged": 0,
-        "passed": 0, "killed": 0, "skipped": 0, "errors": 0
+        "passed": 0, "killed": 0, "skipped": 0, "errors": 0,
+        "prescored": 0, "prescore_killed": 0,
     }
     
     current_row = len(ws_intake.get_all_values())
@@ -435,49 +463,85 @@ def run_pipeline(test_mode: bool = False, single_region: str = None, limit: int 
         
         # Process articles
         for i, article in enumerate(articles):
+            # Check limit
+            if limit and stats["triaged"] + stats["prescore_killed"] >= limit:
+                print(f"\n[LIMIT] Reached {limit} articles")
+                break
+
             url = article.get("url", "")
             title = article.get("title", "")[:50]
-            
+
             print(f"   [{i+1}/{len(articles)}] {title}...")
-            
+
             if url in existing_urls:
                 print(f"      SKIP: duplicate")
                 stats["skipped"] += 1
                 continue
 
-            if limit and stats["triaged"] >= limit:
-                print(f"\n[LIMIT] Reached {limit} articles triaged")
-                break
+            # --- Phase 1: Evidence Pre-Score Gating ---
+            prescore_result = evidence_prescore(
+                article_text=article.get("text", ""),
+                article_url=url,
+                region_id=region_id,
+            )
+            prescore_val = prescore_result["artifact_pre_score"]
+            prescore_matches = "|".join(prescore_result["matched_keywords"])
+            stats["prescored"] += 1
 
-            # Triage
+            print(f"      Pre-score: {prescore_val} ({len(prescore_result['matched_keywords'])} signals)")
+
+            if prescore_val < MIN_PRESCORE:
+                # Auto-KILL: below artifact likelihood threshold
+                stats["prescore_killed"] += 1
+                triage = {
+                    "story_summary": "",
+                    "why_disturbing": "",
+                    "crime_type": "",
+                    "verdict": "KILL",
+                    "kill_reason": f"Low artifact likelihood (pre-score: {prescore_val})",
+                    "viability_score": 0,
+                    "artifact_queries": [],
+                }
+                current_row += 1
+                if append_intake_row(ws_intake, region_id, article, triage,
+                                     prescore=prescore_val,
+                                     prescore_matches=prescore_matches):
+                    existing_urls.add(url)
+                print(f"      ❌ PRE-KILL: score {prescore_val} < {MIN_PRESCORE}")
+                continue
+
+            # --- LLM Triage (only for articles above pre-score threshold) ---
             triage = triage_article(llm, article.get("title", ""), article.get("text", ""))
-            
+
             if not triage:
                 stats["errors"] += 1
                 continue
-            
+
             stats["triaged"] += 1
             verdict = triage.get("verdict", "KILL")
             score = triage.get("viability_score", 0)
-            
+
             # Write to sheet
             current_row += 1
-            if append_intake_row(ws_intake, region_id, article, triage):
+            if append_intake_row(ws_intake, region_id, article, triage,
+                                 prescore=prescore_val,
+                                 prescore_matches=prescore_matches):
                 existing_urls.add(url)
-                
+
                 if verdict == "PASS":
                     stats["passed"] += 1
-                    print(f"      ✅ PASS (score={score})")
+                    print(f"      ✅ PASS (score={score}, pre-score={prescore_val})")
                     promote_to_anchor(ws_anchor, region_id, article, triage, current_row)
                 else:
                     stats["killed"] += 1
                     print(f"      ❌ KILL: {triage.get('kill_reason', '')[:40]}")
-            
+
             time.sleep(0.5)
         
         stats["regions"] += 1
 
-        if limit and stats["triaged"] >= limit:
+        # Break out of region loop if limit reached
+        if limit and stats["triaged"] + stats["prescore_killed"] >= limit:
             break
 
         time.sleep(1)
@@ -486,13 +550,18 @@ def run_pipeline(test_mode: bool = False, single_region: str = None, limit: int 
     print("\n" + "=" * 60)
     print("COMPLETE")
     print("=" * 60)
-    print(f"Regions:   {stats['regions']}")
-    print(f"Articles:  {stats['articles']}")
-    print(f"Triaged:   {stats['triaged']}")
-    print(f"  PASS:    {stats['passed']}")
-    print(f"  KILL:    {stats['killed']}")
-    print(f"Skipped:   {stats['skipped']}")
-    print(f"Errors:    {stats['errors']}")
+    print(f"Regions:      {stats['regions']}")
+    print(f"Articles:     {stats['articles']}")
+    print(f"Pre-scored:   {stats['prescored']}")
+    print(f"  Pre-KILL:   {stats['prescore_killed']}  (below MIN_PRESCORE={MIN_PRESCORE})")
+    print(f"Triaged:      {stats['triaged']}  (sent to LLM)")
+    print(f"  PASS:       {stats['passed']}")
+    print(f"  KILL:       {stats['killed']}")
+    print(f"Skipped:      {stats['skipped']}")
+    print(f"Errors:       {stats['errors']}")
+    if stats['prescored'] > 0:
+        saved_pct = round(stats['prescore_killed'] / stats['prescored'] * 100, 1)
+        print(f"LLM savings:  {saved_pct}% of articles skipped triage")
     
     return stats
 
@@ -504,7 +573,7 @@ def main():
     parser = argparse.ArgumentParser(description="NEWS → VIEWS Pipeline")
     parser.add_argument("--test", action="store_true", help="Test mode (3 regions)")
     parser.add_argument("--region", type=str, help="Process single region")
-    parser.add_argument("--limit", type=int, help="Max articles to triage")
+    parser.add_argument("--limit", type=int, help="Max articles to process")
     parser.add_argument("--check", action="store_true", help="Check credentials only")
 
     args = parser.parse_args()
