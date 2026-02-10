@@ -31,7 +31,7 @@ cp .env.template .env
 # Edit .env with your API keys:
 #   OPENROUTER_API_KEY  — required for LLM triage/narration
 #   YOUTUBE_API_KEY     — required for YouTube ingest
-#   EXA_API_KEY         — optional, improves corroboration search
+#   BRAVE_API_KEY       — required for Brave Search corroboration
 ```
 
 ### 3. Initialize the database

@@ -19,8 +19,7 @@ requests>=2.31.0
 gspread>=5.0.0
 google-auth>=2.0.0
 
-# Exa Search (optional, for corroboration)
-exa-py>=1.0.0
+# Brave Search uses stdlib urllib — no extra dependency needed
 
 # Whisper transcription (optional)
 # openai-whisper>=20231117

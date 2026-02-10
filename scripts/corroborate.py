@@ -12,15 +12,21 @@ Usage:
 """
 
 import argparse
+import gzip
 import hashlib
 import json
 import re
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
 import uuid
 
 import requests
 from bs4 import BeautifulSoup
 
 from scripts.config_loader import (
+    get_env,
     get_openrouter_client,
     get_policy,
     setup_logging,
@@ -88,31 +94,83 @@ def search_google_news(query: str, num_results: int = 5) -> list[dict]:
     return results[:num_results]
 
 
-def search_exa(query: str, num_results: int = 5) -> list[dict]:
-    """Search via Exa API if available (preferred over scraping)."""
-    try:
-        import os
-        api_key = os.getenv("EXA_API_KEY")
-        if not api_key:
-            return []
+# ── Brave Search ──────────────────────────────────────────────────────────
+BRAVE_SEARCH_URL = "https://api.search.brave.com/res/v1/web/search"
+MAX_RETRIES = 3
+INITIAL_BACKOFF = 1.0  # seconds
 
-        from exa_py import Exa
-        exa = Exa(api_key)
-        resp = exa.search(query, num_results=num_results, use_autoprompt=True)
-        return [
-            {"url": r.url, "title": r.title or "", "snippet": (r.text or "")[:500]}
-            for r in resp.results
-        ]
-    except ImportError:
+
+def _fetch_json(url: str, headers: dict | None = None) -> dict | None:
+    """Fetch JSON from URL with retry/backoff for 429 and 5xx errors."""
+    backoff = INITIAL_BACKOFF
+
+    for attempt in range(MAX_RETRIES):
+        try:
+            req = urllib.request.Request(url)
+            if headers:
+                for k, v in headers.items():
+                    req.add_header(k, v)
+
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                raw = resp.read()
+                if raw[:2] == b'\x1f\x8b':
+                    raw = gzip.decompress(raw)
+                return json.loads(raw.decode("utf-8"))
+
+        except urllib.error.HTTPError as e:
+            if e.code in (429, 500, 502, 503) and attempt < MAX_RETRIES - 1:
+                time.sleep(backoff)
+                backoff *= 2
+                continue
+            logger.warning("Brave HTTP %d: %s", e.code, e.reason)
+            return None
+
+        except Exception as e:
+            if attempt < MAX_RETRIES - 1:
+                time.sleep(backoff)
+                backoff *= 2
+                continue
+            logger.warning("Brave fetch error: %s", e)
+            return None
+
+    return None
+
+
+def search_brave(query: str, num_results: int = 5) -> list[dict]:
+    """Search the web using Brave Search API."""
+    api_key = get_env("BRAVE_API_KEY")
+    if not api_key:
         return []
-    except Exception as exc:
-        logger.debug("Exa search failed: %s", exc)
+
+    params = urllib.parse.urlencode({
+        "q": query,
+        "count": min(num_results, 20),
+    })
+    url = f"{BRAVE_SEARCH_URL}?{params}"
+    headers = {
+        "Accept": "application/json",
+        "Accept-Encoding": "gzip",
+        "X-Subscription-Token": api_key,
+    }
+
+    data = _fetch_json(url, headers=headers)
+    if not data:
         return []
+
+    results = []
+    for item in data.get("web", {}).get("results", []):
+        results.append({
+            "url": item.get("url", ""),
+            "title": item.get("title", ""),
+            "snippet": item.get("description", "")[:500],
+        })
+
+    return results
 
 
 def search_for_corroboration(query: str, num_results: int = 5) -> list[dict]:
-    """Try Exa first, fall back to Google scraping."""
-    results = search_exa(query, num_results)
+    """Try Brave Search first, fall back to Google scraping."""
+    results = search_brave(query, num_results)
     if not results:
         results = search_google_news(query, num_results)
     return results

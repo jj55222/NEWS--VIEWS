@@ -136,6 +136,11 @@ def get_youtube_api_key() -> str:
     return get_env("YOUTUBE_API_KEY", required=True)
 
 
+def get_brave_api_key() -> str:
+    """Return the Brave Search API key."""
+    return get_env("BRAVE_API_KEY", required=True)
+
+
 # ── Helpers ────────────────────────────────────────────────────────────────
 def ensure_dirs():
     """Create all required directories if they don't exist."""
