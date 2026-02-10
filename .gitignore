@@ -1,7 +1,17 @@
 # Secrets - NEVER commit these
 .env
 service_account.json
-*.json
+
+# Database
+data/pipeline.db
+data/pipeline.db-wal
+data/pipeline.db-shm
+data/logs/
+
+# Pipeline outputs (large files)
+outputs/case_bundles/*/work/
+outputs/exports/longform/*.mp4
+outputs/exports/shorts/*.mp4
 
 # Python
 __pycache__/

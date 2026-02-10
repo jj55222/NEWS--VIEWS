@@ -1,0 +1,116 @@
+# FOIA-Free Content Pipeline — Policy Configuration
+# Adjust these settings without code changes.
+
+# ─── Triage thresholds ───
+triage:
+  pass_threshold: 70
+  maybe_threshold: 50
+  # Minimum video duration (seconds) to consider as longform candidate
+  min_duration_sec: 60
+  # Minimum description/transcript length to avoid auto-kill
+  min_text_length: 80
+  # Maximum candidates to process per triage run
+  batch_size: 200
+
+# ─── Score weights (must sum to 100) ───
+score_weights:
+  hook_clarity: 25
+  escalation: 25
+  character: 15
+  resolution: 15
+  quality: 10
+  uniqueness: 10
+
+# ─── Viral pattern minimum ───
+# A candidate needs >= this many patterns (out of 5) to pass triage
+# unless extremely strong in 1-2 categories
+viral_pattern_min: 3
+
+# ─── Risk categories that trigger auto-KILL ───
+auto_kill_risks:
+  - minors_sensitive       # minors in sensitive or violent contexts
+  - explicit_sexual_violence
+  - extreme_gore
+  - doxxing_content        # contains addresses, SSNs, private info prominently
+
+# ─── Redaction / blur rules ───
+redaction:
+  blur_non_officers: true
+  blur_minors: true
+  blur_house_numbers: true
+  blur_license_plates: true
+  blur_tattoos_if_sensitive: true
+  bleep_addresses: true
+  bleep_phone_numbers: true
+  bleep_ssns: true
+  bleep_medical_info: true
+
+# ─── Tone / ethics guardrails ───
+ethics:
+  no_humiliation_edits: true
+  no_guilty_language_pre_conviction: true
+  avoid_gotcha_mental_health: true
+  # Default presumption language
+  presumption_label: "alleged"
+
+# ─── Source tiers ───
+source_tiers:
+  tier_a:
+    - official_law_enforcement_channel
+    - official_city_county_state_channel
+    - critical_incident_briefing
+    - court_livestream_archive
+    - da_ag_press_release
+  tier_b:
+    - local_newsroom_youtube    # discovery only, not main reupload
+    - public_scanner_archive    # discovery only
+
+  disallowed:
+    - foia_request_portal
+    - leaked_private_footage
+    - unclear_license_reupload
+
+# ─── Rendering defaults ───
+render:
+  longform_min_sec: 480     # 8 minutes
+  longform_max_sec: 1500    # 25 minutes
+  short_min_sec: 15
+  short_max_sec: 60
+  shorts_per_story_min: 3
+  shorts_per_story_max: 10
+  caption_font: "Arial"
+  caption_font_size: 24
+  export_resolution: "1920x1080"
+  export_fps: 30
+  export_codec: "libx264"
+  export_audio_codec: "aac"
+
+# ─── Automation schedule ───
+schedule:
+  ingest_interval_hours: 6
+  triage_after_ingest: true
+  corroborate_package_schedule: "nightly"
+  render_trigger: "on_approve"   # "on_approve" or "nightly_batch"
+
+# ─── LLM configuration ───
+llm:
+  # Model for triage scoring
+  triage_model: "openai/gpt-4o"
+  # Model for narration drafting
+  narration_model: "openai/gpt-4o"
+  # Model for corroboration
+  corroboration_model: "openai/gpt-4o-mini"
+  # Temperature for triage (lower = more consistent)
+  triage_temperature: 0.2
+  # Temperature for narration (slightly higher for creativity)
+  narration_temperature: 0.5
+  # Max tokens for triage response
+  triage_max_tokens: 1500
+  # Max tokens for narration
+  narration_max_tokens: 4000
+
+# ─── Logging ───
+logging:
+  level: "INFO"
+  log_dir: "data/logs"
+  rotate_days: 30

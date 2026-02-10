@@ -1,14 +1,30 @@
-# NEWS → VIEWS Dependencies
+# FOIA-Free Content Pipeline Dependencies
 
-# Google Sheets
+# Core
+python-dotenv>=1.0.0
+pyyaml>=6.0
+
+# LLM / API
+openai>=1.0.0
+
+# YouTube / Video
+yt-dlp>=2024.1.0
+
+# RSS / Web scraping
+feedparser>=6.0.0
+beautifulsoup4>=4.12.0
+requests>=2.31.0
+
+# Google Sheets (legacy pipeline)
 gspread>=5.0.0
 google-auth>=2.0.0
 
-# Exa Search
+# Exa Search (optional, for corroboration)
 exa-py>=1.0.0
 
-# OpenRouter/OpenAI
-openai>=1.0.0
+# Whisper transcription (optional)
+# openai-whisper>=20231117
 
-# Utilities
-python-dotenv>=1.0.0
+# Face detection (optional, for v2 blur)
+# opencv-python>=4.8.0
+# mediapipe>=0.10.0
