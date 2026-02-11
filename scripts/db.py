@@ -64,7 +64,8 @@ CREATE INDEX IF NOT EXISTS idx_cases_status ON cases(status);
 
 CREATE TABLE IF NOT EXISTS corroboration_sources (
     id                TEXT PRIMARY KEY,
-    case_id           TEXT NOT NULL REFERENCES cases(case_id),
+    candidate_id      TEXT NOT NULL,
+    case_id           TEXT,           -- set later when candidate is promoted to case
     url               TEXT NOT NULL,
     source_type       TEXT,           -- press_release | news_article | court_record | da_statement
     title             TEXT,
@@ -73,6 +74,7 @@ CREATE TABLE IF NOT EXISTS corroboration_sources (
     created_at        TEXT NOT NULL
 );
 
+CREATE INDEX IF NOT EXISTS idx_corr_candidate ON corroboration_sources(candidate_id);
 CREATE INDEX IF NOT EXISTS idx_corr_case ON corroboration_sources(case_id);
 """
 
@@ -262,14 +264,15 @@ def get_cases(conn: sqlite3.Connection, status: str | None = None,
 
 # ── Corroboration helpers ──────────────────────────────────────────────────
 def insert_corroboration(conn: sqlite3.Connection, corr: dict) -> None:
-    """Insert a corroboration source for a case."""
+    """Insert a corroboration source for a candidate (or case)."""
     conn.execute(
         """INSERT INTO corroboration_sources
-           (id, case_id, url, source_type, title, snippet, verified, created_at)
-           VALUES (?,?,?,?,?,?,?,?)""",
+           (id, candidate_id, case_id, url, source_type, title, snippet, verified, created_at)
+           VALUES (?,?,?,?,?,?,?,?,?)""",
         (
             corr["id"],
-            corr["case_id"],
+            corr["candidate_id"],
+            corr.get("case_id"),
             corr["url"],
             corr.get("source_type", "unknown"),
             corr.get("title"),
@@ -281,11 +284,11 @@ def insert_corroboration(conn: sqlite3.Connection, corr: dict) -> None:
     conn.commit()
 
 
-def get_corroborations(conn: sqlite3.Connection, case_id: str) -> list[dict]:
-    """Fetch corroboration sources for a case."""
+def get_corroborations(conn: sqlite3.Connection, candidate_id: str) -> list[dict]:
+    """Fetch corroboration sources for a candidate."""
     rows = conn.execute(
-        "SELECT * FROM corroboration_sources WHERE case_id = ? ORDER BY created_at",
-        (case_id,),
+        "SELECT * FROM corroboration_sources WHERE candidate_id = ? ORDER BY created_at",
+        (candidate_id,),
     ).fetchall()
     return [dict(r) for r in rows]
 

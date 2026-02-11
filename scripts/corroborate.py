@@ -362,7 +362,7 @@ def corroborate(limit: int = 50, dry_run: bool = False) -> dict:
 
                 insert_corroboration(conn, {
                     "id": uuid.uuid4().hex[:16],
-                    "case_id": cid,  # Temporarily using candidate_id
+                    "candidate_id": cid,
                     "url": src["url"],
                     "source_type": src_type,
                     "title": src["title"],
