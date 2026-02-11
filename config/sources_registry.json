@@ -8,7 +8,8 @@
     "enabled": true,
     "notes": "Largest bodycam/dashcam aggregation channel. Official footage from departments nationwide.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_real_world_police",
@@ -19,7 +20,8 @@
     "enabled": true,
     "notes": "Curated bodycam and dashcam footage with context from FOIA releases.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_bodycam_central",
@@ -30,7 +32,8 @@
     "enabled": true,
     "notes": "Bodycam footage compilation channel with unedited department releases.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_code_blue_cam",
@@ -41,7 +44,8 @@
     "enabled": true,
     "notes": "Bodycam and dashcam footage aggregation channel.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_active_self_protection",
@@ -52,7 +56,8 @@
     "enabled": true,
     "notes": "Self-defense and law enforcement encounter analysis with official footage.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "secondary"
   },
   {
     "source_id": "yt_audit_the_audit",
@@ -63,7 +68,8 @@
     "enabled": true,
     "notes": "Legal analysis of police encounters using bodycam footage.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "secondary"
   },
   {
     "source_id": "yt_donut_operator",
@@ -74,7 +80,8 @@
     "enabled": true,
     "notes": "Former law enforcement officer reviews bodycam and dashcam footage.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "secondary"
   },
   {
     "source_id": "yt_bodycam_files",
@@ -85,7 +92,8 @@
     "enabled": true,
     "notes": "Compilation of released bodycam and dashcam videos.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_police_insider",
@@ -96,7 +104,8 @@
     "enabled": true,
     "notes": "Bodycam and dashcam footage with incident summaries.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_body_worn_camera",
@@ -107,7 +116,8 @@
     "enabled": true,
     "notes": "Unedited bodycam footage releases from various departments.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_the_civil_rights_lawyer",
@@ -118,7 +128,8 @@
     "enabled": true,
     "notes": "Legal analysis of police encounters with bodycam evidence.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "secondary"
   },
   {
     "source_id": "yt_blue_bacon",
@@ -129,7 +140,8 @@
     "enabled": true,
     "notes": "Police bodycam footage compilation and analysis.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "secondary"
   },
   {
     "source_id": "yt_law_crime_network",
@@ -140,7 +152,8 @@
     "enabled": true,
     "notes": "Live trial coverage and court proceedings streaming. Founded by Dan Abrams.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_court_tv",
@@ -151,7 +164,8 @@
     "enabled": true,
     "notes": "Live and archived court trial broadcasts.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_court_tv_full_trials",
@@ -162,7 +176,8 @@
     "enabled": true,
     "notes": "Complete unedited trial recordings from Court TV.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_crime_talk_daily",
@@ -173,7 +188,8 @@
     "enabled": true,
     "notes": "Daily court proceedings and crime news coverage by Scott Reisch.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "secondary"
   },
   {
     "source_id": "yt_emily_d_baker",
@@ -184,7 +200,8 @@
     "enabled": true,
     "notes": "Former DA live-streams court proceedings with legal commentary.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "secondary"
   },
   {
     "source_id": "yt_lapd",
@@ -195,7 +212,8 @@
     "enabled": true,
     "notes": "LAPD official channel. Critical incident briefings and bodycam releases.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_lvmpd",
@@ -206,7 +224,8 @@
     "enabled": true,
     "notes": "LVMPD Use of Force Review Board videos and critical incident briefings.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_phoenix_pd",
@@ -217,7 +236,8 @@
     "enabled": true,
     "notes": "Phoenix PD critical incident briefings with bodycam and dashcam footage.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_mesa_pd",
@@ -228,7 +248,8 @@
     "enabled": true,
     "notes": "Mesa PD bodycam releases and community briefings.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_scottsdale_pd",
@@ -239,7 +260,8 @@
     "enabled": true,
     "notes": "Scottsdale PD official releases and incident briefings.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_chandler_pd",
@@ -250,7 +272,8 @@
     "enabled": true,
     "notes": "Chandler PD bodycam releases and critical incident videos.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_tempe_pd",
@@ -261,7 +284,8 @@
     "enabled": true,
     "notes": "Tempe PD official channel with incident footage.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_glendale_az_pd",
@@ -272,7 +296,8 @@
     "enabled": true,
     "notes": "Glendale AZ PD official bodycam and critical incident releases.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_tucson_pd",
@@ -283,7 +308,8 @@
     "enabled": true,
     "notes": "Tucson PD official channel with use-of-force footage.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_denver_pd",
@@ -294,7 +320,8 @@
     "enabled": true,
     "notes": "Denver PD bodycam releases and officer-involved incident videos.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_aurora_co_pd",
@@ -305,7 +332,8 @@
     "enabled": true,
     "notes": "Aurora CO PD transparency releases including bodycam footage.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_colorado_springs_pd",
@@ -316,7 +344,8 @@
     "enabled": true,
     "notes": "Colorado Springs PD critical incident bodycam releases.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_fort_worth_pd",
@@ -327,7 +356,8 @@
     "enabled": true,
     "notes": "Fort Worth PD bodycam and critical incident footage.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_san_antonio_pd",
@@ -338,7 +368,8 @@
     "enabled": true,
     "notes": "SAPD bodycam releases and officer-involved shooting briefings.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_houston_pd",
@@ -349,7 +380,8 @@
     "enabled": true,
     "notes": "HPD official channel with incident briefings and bodycam footage.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_dallas_pd",
@@ -360,7 +392,8 @@
     "enabled": true,
     "notes": "Dallas PD bodycam and dashcam critical incident releases.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_austin_pd",
@@ -371,7 +404,8 @@
     "enabled": true,
     "notes": "APD critical incident videos and bodycam transparency releases.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_el_paso_pd",
@@ -382,7 +416,8 @@
     "enabled": true,
     "notes": "El Paso PD official bodycam and incident footage releases.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_tulsa_pd",
@@ -393,7 +428,8 @@
     "enabled": true,
     "notes": "Tulsa PD critical incident and bodycam footage releases.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_okc_pd",
@@ -404,7 +440,8 @@
     "enabled": true,
     "notes": "OKCPD officer-involved shooting footage and incident briefings.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_seattle_pd",
@@ -415,7 +452,8 @@
     "enabled": true,
     "notes": "SPD bodycam releases and transparency videos.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_portland_pb",
@@ -426,7 +464,8 @@
     "enabled": true,
     "notes": "Portland PB use-of-force incident and bodycam releases.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_sacramento_pd",
@@ -437,7 +476,8 @@
     "enabled": true,
     "notes": "Sacramento PD bodycam and officer-involved incident footage.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_san_diego_pd",
@@ -448,7 +488,8 @@
     "enabled": true,
     "notes": "SDPD critical incident and community briefing videos.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_san_jose_pd",
@@ -459,7 +500,8 @@
     "enabled": true,
     "notes": "SJPD bodycam footage and incident briefings.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_san_francisco_pd",
@@ -470,7 +512,8 @@
     "enabled": true,
     "notes": "SFPD official releases including town halls and incident footage.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_fresno_pd",
@@ -481,7 +524,8 @@
     "enabled": true,
     "notes": "Fresno PD bodycam and officer-involved incident footage releases.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_long_beach_pd",
@@ -492,7 +536,8 @@
     "enabled": true,
     "notes": "Long Beach PD critical incident briefings.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_albuquerque_pd",
@@ -503,7 +548,8 @@
     "enabled": true,
     "notes": "APD bodycam releases per DOJ consent decree transparency requirements.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_nashville_pd",
@@ -514,7 +560,8 @@
     "enabled": true,
     "notes": "MNPD bodycam and critical incident footage releases.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_knoxville_pd",
@@ -525,7 +572,8 @@
     "enabled": true,
     "notes": "Knoxville PD officer-involved incident releases.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_memphis_pd",
@@ -536,7 +584,8 @@
     "enabled": true,
     "notes": "MPD bodycam and incident footage official releases.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_atlanta_pd",
@@ -547,7 +596,8 @@
     "enabled": true,
     "notes": "APD officer-involved incident videos and press conferences.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_savannah_pd",
@@ -558,7 +608,8 @@
     "enabled": true,
     "notes": "Savannah PD bodycam footage and incident briefings.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_charlotte_mecklenburg_pd",
@@ -569,7 +620,8 @@
     "enabled": true,
     "notes": "CMPD critical incident and bodycam releases.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_raleigh_pd",
@@ -580,7 +632,8 @@
     "enabled": true,
     "notes": "Raleigh PD bodycam and critical incident footage releases.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_baltimore_pd",
@@ -591,7 +644,8 @@
     "enabled": true,
     "notes": "BPD bodycam releases under DOJ consent decree.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_columbus_pd",
@@ -602,7 +656,8 @@
     "enabled": true,
     "notes": "Columbus PD critical incident and bodycam releases.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_cincinnati_pd",
@@ -613,7 +668,8 @@
     "enabled": true,
     "notes": "Cincinnati PD bodycam and incident footage releases.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_cleveland_pd",
@@ -624,7 +680,8 @@
     "enabled": true,
     "notes": "Cleveland PD bodycam and critical incident transparency releases.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_indianapolis_pd",
@@ -635,7 +692,8 @@
     "enabled": true,
     "notes": "IMPD critical incident bodycam and briefing videos.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_minneapolis_pd",
@@ -646,7 +704,8 @@
     "enabled": true,
     "notes": "MPD bodycam footage releases and incident briefings.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_milwaukee_pd",
@@ -657,7 +716,8 @@
     "enabled": true,
     "notes": "Milwaukee PD bodycam and critical incident releases.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_kansas_city_pd",
@@ -668,7 +728,8 @@
     "enabled": true,
     "notes": "KCPD officer-involved incident footage and briefings.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_st_louis_pd",
@@ -679,7 +740,8 @@
     "enabled": true,
     "notes": "SLMPD critical incident and bodycam footage releases.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_omaha_pd",
@@ -690,7 +752,8 @@
     "enabled": true,
     "notes": "OPD bodycam and critical incident video releases.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_tampa_pd",
@@ -701,7 +764,8 @@
     "enabled": true,
     "notes": "Tampa PD bodycam and dashcam incident releases.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_orlando_pd",
@@ -712,7 +776,8 @@
     "enabled": true,
     "notes": "OPD bodycam and critical incident footage.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_miami_pd",
@@ -723,7 +788,8 @@
     "enabled": true,
     "notes": "Miami PD official channel with incident footage.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_jacksonville_so",
@@ -734,7 +800,8 @@
     "enabled": true,
     "notes": "JSO bodycam and officer-involved incident releases.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_baton_rouge_pd",
@@ -745,7 +812,8 @@
     "enabled": true,
     "notes": "BRPD bodycam and incident footage releases.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_new_orleans_pd",
@@ -756,7 +824,8 @@
     "enabled": true,
     "notes": "NOPD bodycam releases under federal consent decree.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_detroit_pd",
@@ -767,7 +836,8 @@
     "enabled": true,
     "notes": "DPD critical incident and officer-involved shooting footage.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_pittsburgh_pb",
@@ -778,7 +848,8 @@
     "enabled": true,
     "notes": "Pittsburgh PD bodycam releases and press briefings.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_philadelphia_pd",
@@ -789,7 +860,8 @@
     "enabled": true,
     "notes": "PPD critical incident footage and press conferences.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_volusia_county_sheriff",
@@ -800,7 +872,8 @@
     "enabled": true,
     "notes": "Volusia County SO bodycam and dashcam footage. Prolific uploader.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_polk_county_sheriff",
@@ -811,7 +884,8 @@
     "enabled": true,
     "notes": "Polk County SO press conferences by Sheriff Grady Judd.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_pinal_county_sheriff",
@@ -822,7 +896,8 @@
     "enabled": true,
     "notes": "Pinal County SO bodycam and dashcam pursuit footage.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_richland_county_sheriff",
@@ -833,7 +908,8 @@
     "enabled": true,
     "notes": "Richland County SD bodycam and incident footage. Known from Live PD.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_maricopa_county_sheriff",
@@ -844,7 +920,8 @@
     "enabled": true,
     "notes": "MCSO official channel with bodycam and incident footage.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_orange_county_fl_sheriff",
@@ -855,7 +932,8 @@
     "enabled": true,
     "notes": "OCSO FL bodycam and incident footage releases.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_hillsborough_county_sheriff",
@@ -866,7 +944,8 @@
     "enabled": true,
     "notes": "Hillsborough County SO bodycam and dashcam releases.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_brevard_county_sheriff",
@@ -877,7 +956,8 @@
     "enabled": true,
     "notes": "Brevard County SO official bodycam and incident footage.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_flagler_county_sheriff",
@@ -888,7 +968,8 @@
     "enabled": true,
     "notes": "Flagler County SO bodycam footage releases.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_pinellas_county_sheriff",
@@ -899,7 +980,8 @@
     "enabled": true,
     "notes": "Pinellas County SO incident and bodycam footage.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_lee_county_sheriff",
@@ -910,7 +992,8 @@
     "enabled": true,
     "notes": "Lee County SO bodycam and incident footage releases.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_marion_county_sheriff",
@@ -921,7 +1004,8 @@
     "enabled": true,
     "notes": "Marion County FL SO bodycam and pursuit footage.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_lasd",
@@ -932,7 +1016,8 @@
     "enabled": true,
     "notes": "LASD critical incident and use-of-force briefing videos.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_san_bernardino_county_sheriff",
@@ -943,7 +1028,8 @@
     "enabled": true,
     "notes": "San Bernardino County SD bodycam and incident releases.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_riverside_county_sheriff",
@@ -954,7 +1040,8 @@
     "enabled": true,
     "notes": "Riverside County SD incident footage and press briefings.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_sacramento_county_sheriff",
@@ -965,7 +1052,8 @@
     "enabled": true,
     "notes": "Sacramento County SO bodycam and incident footage.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_harris_county_sheriff",
@@ -976,7 +1064,8 @@
     "enabled": true,
     "notes": "Harris County SO dashcam and bodycam incident releases.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_bernalillo_county_sheriff",
@@ -987,7 +1076,8 @@
     "enabled": true,
     "notes": "Bernalillo County SO bodycam and incident footage.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_king_county_sheriff",
@@ -998,7 +1088,8 @@
     "enabled": true,
     "notes": "King County SO bodycam releases and incident briefings.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_arizona_dps",
@@ -1009,7 +1100,8 @@
     "enabled": true,
     "notes": "AZ DPS dashcam and bodycam pursuit and incident footage.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_colorado_state_patrol",
@@ -1020,7 +1112,8 @@
     "enabled": true,
     "notes": "CSP dashcam and bodycam incident releases.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_ohio_state_highway_patrol",
@@ -1031,7 +1124,8 @@
     "enabled": true,
     "notes": "OSHP dashcam pursuit and traffic stop footage.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_florida_highway_patrol",
@@ -1042,7 +1136,8 @@
     "enabled": true,
     "notes": "FHP dashcam and pursuit footage releases.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_texas_dps",
@@ -1053,7 +1148,8 @@
     "enabled": true,
     "notes": "Texas DPS dashcam and bodycam pursuit and incident releases.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_california_highway_patrol",
@@ -1064,7 +1160,8 @@
     "enabled": true,
     "notes": "CHP official incident and pursuit footage.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_washington_state_patrol",
@@ -1075,7 +1172,8 @@
     "enabled": true,
     "notes": "WSP dashcam and trooper bodycam footage.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_oregon_state_police",
@@ -1086,7 +1184,8 @@
     "enabled": true,
     "notes": "OSP dashcam and incident footage releases.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_virginia_state_police",
@@ -1097,7 +1196,8 @@
     "enabled": true,
     "notes": "VSP dashcam and incident footage.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_georgia_state_patrol",
@@ -1108,7 +1208,8 @@
     "enabled": true,
     "notes": "GSP dashcam and pursuit footage releases.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_new_mexico_state_police",
@@ -1119,7 +1220,8 @@
     "enabled": true,
     "notes": "NMSP dashcam and bodycam footage releases.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_utah_highway_patrol",
@@ -1130,7 +1232,8 @@
     "enabled": true,
     "notes": "UHP dashcam incident and pursuit footage.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_nevada_highway_patrol",
@@ -1141,7 +1244,8 @@
     "enabled": true,
     "notes": "NHP dashcam and incident footage.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_tennessee_highway_patrol",
@@ -1152,7 +1256,8 @@
     "enabled": true,
     "notes": "THP dashcam pursuit and traffic stop footage.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_nc_state_highway_patrol",
@@ -1163,7 +1268,8 @@
     "enabled": true,
     "notes": "NCSHP dashcam and pursuit footage releases.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_michigan_state_police",
@@ -1174,7 +1280,8 @@
     "enabled": true,
     "notes": "MSP dashcam and incident video releases.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_indiana_state_police",
@@ -1185,7 +1292,8 @@
     "enabled": true,
     "notes": "ISP dashcam and critical incident footage.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_copa_chicago",
@@ -1196,7 +1304,8 @@
     "enabled": true,
     "notes": "COPA releases bodycam from CPD officer-involved shootings.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_oakland_pd",
@@ -1207,7 +1316,8 @@
     "enabled": true,
     "notes": "OPD bodycam and critical incident footage under federal oversight.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_henderson_pd",
@@ -1218,7 +1328,8 @@
     "enabled": true,
     "notes": "Henderson NV PD bodycam and dashcam incident releases.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_north_las_vegas_pd",
@@ -1229,7 +1340,8 @@
     "enabled": true,
     "notes": "NLVPD bodycam and incident footage releases.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_wichita_pd",
@@ -1240,7 +1352,8 @@
     "enabled": true,
     "notes": "Wichita PD critical incident and bodycam releases.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_lakeland_pd",
@@ -1251,7 +1364,8 @@
     "enabled": true,
     "notes": "Lakeland PD bodycam and incident footage.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_collier_county_sheriff",
@@ -1262,7 +1376,8 @@
     "enabled": true,
     "notes": "Collier County SO bodycam and dashcam releases.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_st_johns_county_sheriff",
@@ -1273,7 +1388,8 @@
     "enabled": true,
     "notes": "St. Johns County SO bodycam and incident releases.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_osceola_county_sheriff",
@@ -1284,7 +1400,8 @@
     "enabled": true,
     "notes": "Osceola County SO bodycam footage releases.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_chesapeake_pd",
@@ -1295,7 +1412,8 @@
     "enabled": true,
     "notes": "Chesapeake PD bodycam and critical incident releases.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_virginia_beach_pd",
@@ -1306,7 +1424,8 @@
     "enabled": true,
     "notes": "VBPD officer-involved incident footage and briefings.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_fdle_florida",
@@ -1317,7 +1436,8 @@
     "enabled": true,
     "notes": "FDLE officer-involved shooting investigation releases.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_gwinnett_county_pd",
@@ -1328,7 +1448,8 @@
     "enabled": true,
     "notes": "Gwinnett County PD bodycam and incident footage.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "yt_dekalb_county_pd",
@@ -1339,7 +1460,8 @@
     "enabled": true,
     "notes": "DeKalb County PD bodycam and incident video releases.",
     "ingest_method": "youtube_api",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "wp_lapd_transparency",
@@ -1350,7 +1472,8 @@
     "enabled": true,
     "notes": "LAPD critical incident review division page with links to video releases.",
     "ingest_method": "scrape",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "wp_lvmpd_ois",
@@ -1361,7 +1484,8 @@
     "enabled": true,
     "notes": "LVMPD OIS page with links to LVMPD Use of Force Review Board presentations.",
     "ingest_method": "scrape",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "wp_phoenix_pd_ois",
@@ -1372,7 +1496,8 @@
     "enabled": true,
     "notes": "Phoenix PD transparency page for officer-involved shooting briefings.",
     "ingest_method": "scrape",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "wp_denver_ois",
@@ -1383,7 +1508,8 @@
     "enabled": true,
     "notes": "Denver Office of the Independent Monitor with OIS investigation reports.",
     "ingest_method": "scrape",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "wp_seattle_pd_ois",
@@ -1394,7 +1520,8 @@
     "enabled": true,
     "notes": "SPD officer-involved shooting data and video release page.",
     "ingest_method": "scrape",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "wp_austin_pd_transparency",
@@ -1405,7 +1532,8 @@
     "enabled": true,
     "notes": "Austin PD officer-involved shooting information and video releases.",
     "ingest_method": "scrape",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "wp_san_diego_pd_transparency",
@@ -1416,7 +1544,8 @@
     "enabled": true,
     "notes": "SDPD transparency portal with use-of-force data and video releases.",
     "ingest_method": "scrape",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "wp_chicago_copa",
@@ -1427,7 +1556,8 @@
     "enabled": true,
     "notes": "COPA publishes bodycam and evidence for CPD officer-involved incidents.",
     "ingest_method": "scrape",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "wp_la_county_da",
@@ -1438,7 +1568,8 @@
     "enabled": true,
     "notes": "LA County DA press releases on criminal prosecution decisions.",
     "ingest_method": "scrape",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "wp_maricopa_county_attorney",
@@ -1449,7 +1580,8 @@
     "enabled": true,
     "notes": "Maricopa County Attorney news and press releases.",
     "ingest_method": "scrape",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "wp_manhattan_da",
@@ -1460,7 +1592,8 @@
     "enabled": true,
     "notes": "Manhattan DA press releases on major case outcomes.",
     "ingest_method": "scrape",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "wp_harris_county_da",
@@ -1471,7 +1604,8 @@
     "enabled": true,
     "notes": "Harris County DA news releases covering Houston metro prosecutions.",
     "ingest_method": "scrape",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "wp_dallas_county_da",
@@ -1482,7 +1616,8 @@
     "enabled": true,
     "notes": "Dallas County DA media releases.",
     "ingest_method": "scrape",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "wp_cook_county_sa",
@@ -1493,7 +1628,8 @@
     "enabled": true,
     "notes": "Cook County SA newsroom for Chicago metro criminal case press releases.",
     "ingest_method": "scrape",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "wp_broward_county_sa",
@@ -1504,7 +1640,8 @@
     "enabled": true,
     "notes": "Broward County State Attorney news and press releases.",
     "ingest_method": "scrape",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "wp_orange_county_da_ca",
@@ -1515,7 +1652,8 @@
     "enabled": true,
     "notes": "Orange County CA DA news and media releases.",
     "ingest_method": "scrape",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "wp_san_diego_county_da",
@@ -1526,7 +1664,8 @@
     "enabled": true,
     "notes": "San Diego County DA news releases on criminal prosecutions.",
     "ingest_method": "scrape",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "wp_sacramento_county_da",
@@ -1537,7 +1676,8 @@
     "enabled": true,
     "notes": "Sacramento County DA news releases.",
     "ingest_method": "scrape",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "wp_king_county_pa",
@@ -1548,7 +1688,8 @@
     "enabled": true,
     "notes": "King County PA press releases covering Seattle metro cases.",
     "ingest_method": "scrape",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "wp_fulton_county_da",
@@ -1559,7 +1700,8 @@
     "enabled": true,
     "notes": "Fulton County DA office page with press releases for Atlanta area.",
     "ingest_method": "scrape",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "wp_hennepin_county_attorney",
@@ -1570,7 +1712,8 @@
     "enabled": true,
     "notes": "Hennepin County Attorney newsroom covering Minneapolis cases.",
     "ingest_method": "scrape",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "wp_doj_press",
@@ -1581,7 +1724,8 @@
     "enabled": true,
     "notes": "Federal DOJ press releases on major investigations and civil rights cases.",
     "ingest_method": "scrape",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "wp_california_ag",
@@ -1592,7 +1736,8 @@
     "enabled": true,
     "notes": "California AG news releases on state-level enforcement actions.",
     "ingest_method": "scrape",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "wp_texas_ag",
@@ -1603,7 +1748,8 @@
     "enabled": true,
     "notes": "Texas AG news on state enforcement and prosecution.",
     "ingest_method": "scrape",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "wp_florida_ag",
@@ -1614,7 +1760,8 @@
     "enabled": true,
     "notes": "Florida AG press releases on criminal enforcement.",
     "ingest_method": "scrape",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "wp_new_york_ag",
@@ -1625,7 +1772,8 @@
     "enabled": true,
     "notes": "NY AG press releases including police misconduct investigations.",
     "ingest_method": "scrape",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "wp_pacer",
@@ -1636,7 +1784,8 @@
     "enabled": false,
     "notes": "Federal court records system. Requires account. Monitor for high-profile case filings.",
     "ingest_method": "scrape",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "wp_ca_courts",
@@ -1647,7 +1796,8 @@
     "enabled": true,
     "notes": "California state court system news and high-profile case updates.",
     "ingest_method": "scrape",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "wp_tx_courts",
@@ -1658,7 +1808,8 @@
     "enabled": true,
     "notes": "Texas state court media page with notable case updates.",
     "ingest_method": "scrape",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "wp_fl_courts",
@@ -1669,7 +1820,8 @@
     "enabled": true,
     "notes": "Florida state courts newsroom.",
     "ingest_method": "scrape",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "wp_san_francisco_pd_transparency",
@@ -1680,7 +1832,8 @@
     "enabled": true,
     "notes": "SFPD transparency page with use-of-force and bodycam information.",
     "ingest_method": "scrape",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "wp_nypd_ois",
@@ -1691,7 +1844,8 @@
     "enabled": true,
     "notes": "NYPD use of force reporting page with annual data and incident reports.",
     "ingest_method": "scrape",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "wp_portland_pb_transparency",
@@ -1702,7 +1856,8 @@
     "enabled": true,
     "notes": "Portland PB officer-involved shooting data and reports.",
     "ingest_method": "scrape",
-    "tier": "A"
+    "tier": "A",
+    "source_class": "primary"
   },
   {
     "source_id": "rss_abc7_la",
@@ -1713,7 +1868,8 @@
     "enabled": true,
     "notes": "KABC-TV Los Angeles RSS feed covering local crime and safety.",
     "ingest_method": "rss",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "discovery_only"
   },
   {
     "source_id": "rss_nbc4_la",
@@ -1724,7 +1880,8 @@
     "enabled": true,
     "notes": "KNBC-TV Los Angeles local news feed including crime coverage.",
     "ingest_method": "rss",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "discovery_only"
   },
   {
     "source_id": "rss_fox11_la",
@@ -1735,7 +1892,8 @@
     "enabled": true,
     "notes": "KTTV FOX 11 LA news RSS with crime and public safety coverage.",
     "ingest_method": "rss",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "discovery_only"
   },
   {
     "source_id": "rss_abc7_chicago",
@@ -1746,7 +1904,8 @@
     "enabled": true,
     "notes": "WLS-TV Chicago RSS feed with crime and courts coverage.",
     "ingest_method": "rss",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "discovery_only"
   },
   {
     "source_id": "rss_nbc5_chicago",
@@ -1757,7 +1916,8 @@
     "enabled": true,
     "notes": "WMAQ-TV Chicago local news RSS including crime beats.",
     "ingest_method": "rss",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "discovery_only"
   },
   {
     "source_id": "rss_fox32_chicago",
@@ -1768,7 +1928,8 @@
     "enabled": true,
     "notes": "WFLD FOX 32 Chicago news RSS with crime coverage.",
     "ingest_method": "rss",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "discovery_only"
   },
   {
     "source_id": "rss_abc13_houston",
@@ -1779,7 +1940,8 @@
     "enabled": true,
     "notes": "KTRK-TV Houston RSS feed with crime and court coverage.",
     "ingest_method": "rss",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "discovery_only"
   },
   {
     "source_id": "rss_fox26_houston",
@@ -1790,7 +1952,8 @@
     "enabled": true,
     "notes": "KRIV FOX 26 Houston news RSS.",
     "ingest_method": "rss",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "discovery_only"
   },
   {
     "source_id": "rss_nbc5_dallas",
@@ -1801,7 +1964,8 @@
     "enabled": true,
     "notes": "KXAS-TV Dallas-Fort Worth local news RSS.",
     "ingest_method": "rss",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "discovery_only"
   },
   {
     "source_id": "rss_fox4_dallas",
@@ -1812,7 +1976,8 @@
     "enabled": true,
     "notes": "KDFW FOX 4 DFW news RSS with crime and public safety coverage.",
     "ingest_method": "rss",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "discovery_only"
   },
   {
     "source_id": "rss_abc15_phoenix",
@@ -1823,7 +1988,8 @@
     "enabled": true,
     "notes": "KNXV-TV Phoenix RSS with crime and local news.",
     "ingest_method": "rss",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "discovery_only"
   },
   {
     "source_id": "rss_fox10_phoenix",
@@ -1834,7 +2000,8 @@
     "enabled": true,
     "notes": "KSAZ FOX 10 Phoenix news RSS.",
     "ingest_method": "rss",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "discovery_only"
   },
   {
     "source_id": "rss_nbc_bay_area",
@@ -1845,7 +2012,8 @@
     "enabled": true,
     "notes": "KNTV NBC Bay Area local news RSS with crime coverage.",
     "ingest_method": "rss",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "discovery_only"
   },
   {
     "source_id": "rss_fox5_atlanta",
@@ -1856,7 +2024,8 @@
     "enabled": true,
     "notes": "WAGA FOX 5 Atlanta news RSS with crime and court coverage.",
     "ingest_method": "rss",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "discovery_only"
   },
   {
     "source_id": "rss_wral_raleigh",
@@ -1867,7 +2036,8 @@
     "enabled": true,
     "notes": "WRAL-TV Raleigh general news RSS feed.",
     "ingest_method": "rss",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "discovery_only"
   },
   {
     "source_id": "rss_fox13_tampa",
@@ -1878,7 +2048,8 @@
     "enabled": true,
     "notes": "WTVT FOX 13 Tampa Bay news RSS with crime coverage.",
     "ingest_method": "rss",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "discovery_only"
   },
   {
     "source_id": "rss_wesh_orlando",
@@ -1889,7 +2060,8 @@
     "enabled": true,
     "notes": "WESH-TV Orlando news RSS with local crime and public safety.",
     "ingest_method": "rss",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "discovery_only"
   },
   {
     "source_id": "rss_nbc6_miami",
@@ -1900,7 +2072,8 @@
     "enabled": true,
     "notes": "WTVJ NBC 6 Miami local news RSS.",
     "ingest_method": "rss",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "discovery_only"
   },
   {
     "source_id": "rss_kiro7_seattle",
@@ -1911,7 +2084,8 @@
     "enabled": true,
     "notes": "KIRO-TV Seattle news RSS with crime and public safety.",
     "ingest_method": "rss",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "discovery_only"
   },
   {
     "source_id": "rss_kgw_portland",
@@ -1922,7 +2096,8 @@
     "enabled": true,
     "notes": "KGW-TV Portland news RSS with local crime coverage.",
     "ingest_method": "rss",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "discovery_only"
   },
   {
     "source_id": "rss_9news_denver",
@@ -1933,7 +2108,8 @@
     "enabled": true,
     "notes": "KUSA-TV Denver news RSS with crime and courts coverage.",
     "ingest_method": "rss",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "discovery_only"
   },
   {
     "source_id": "rss_fox2_detroit",
@@ -1944,7 +2120,8 @@
     "enabled": true,
     "notes": "WJBK FOX 2 Detroit news RSS.",
     "ingest_method": "rss",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "discovery_only"
   },
   {
     "source_id": "rss_fox5_vegas",
@@ -1955,7 +2132,8 @@
     "enabled": true,
     "notes": "KVVU FOX 5 Las Vegas news RSS with crime coverage.",
     "ingest_method": "rss",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "discovery_only"
   },
   {
     "source_id": "rss_8newsnow_vegas",
@@ -1966,7 +2144,8 @@
     "enabled": true,
     "notes": "KLAS-TV Las Vegas news RSS.",
     "ingest_method": "rss",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "discovery_only"
   },
   {
     "source_id": "rss_wfaa_dallas",
@@ -1977,7 +2156,8 @@
     "enabled": true,
     "notes": "WFAA-TV Dallas local news RSS.",
     "ingest_method": "rss",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "discovery_only"
   },
   {
     "source_id": "rss_kens5_san_antonio",
@@ -1988,7 +2168,8 @@
     "enabled": true,
     "notes": "KENS-TV San Antonio news RSS with crime coverage.",
     "ingest_method": "rss",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "discovery_only"
   },
   {
     "source_id": "rss_wsmv_nashville",
@@ -1999,7 +2180,8 @@
     "enabled": true,
     "notes": "WSMV-TV Nashville news RSS with crime and courts.",
     "ingest_method": "rss",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "discovery_only"
   },
   {
     "source_id": "rss_wbal_baltimore",
@@ -2010,7 +2192,8 @@
     "enabled": true,
     "notes": "WBAL-TV Baltimore news RSS with crime coverage.",
     "ingest_method": "rss",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "discovery_only"
   },
   {
     "source_id": "rss_wcpo_cincinnati",
@@ -2021,7 +2204,8 @@
     "enabled": true,
     "notes": "WCPO-TV Cincinnati news RSS.",
     "ingest_method": "rss",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "discovery_only"
   },
   {
     "source_id": "rss_wfla_tampa",
@@ -2032,7 +2216,8 @@
     "enabled": true,
     "notes": "WFLA-TV Tampa news RSS with crime and public safety.",
     "ingest_method": "rss",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "discovery_only"
   },
   {
     "source_id": "rss_wsb_atlanta",
@@ -2043,7 +2228,8 @@
     "enabled": true,
     "notes": "WSB-TV Atlanta news RSS with crime coverage.",
     "ingest_method": "rss",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "discovery_only"
   },
   {
     "source_id": "rss_fox29_philly",
@@ -2054,7 +2240,8 @@
     "enabled": true,
     "notes": "WTXF FOX 29 Philadelphia news RSS.",
     "ingest_method": "rss",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "discovery_only"
   },
   {
     "source_id": "rss_fox9_minneapolis",
@@ -2065,7 +2252,8 @@
     "enabled": true,
     "notes": "KMSP FOX 9 Minneapolis news RSS with crime coverage.",
     "ingest_method": "rss",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "discovery_only"
   },
   {
     "source_id": "rss_law_crime_news",
@@ -2076,7 +2264,8 @@
     "enabled": true,
     "notes": "Law&Crime website RSS with legal news, court proceedings, and crime coverage.",
     "ingest_method": "rss",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "discovery_only"
   },
   {
     "source_id": "rss_the_marshall_project",
@@ -2087,7 +2276,8 @@
     "enabled": true,
     "notes": "Nonprofit criminal justice investigative journalism RSS feed.",
     "ingest_method": "rss",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "discovery_only"
   },
   {
     "source_id": "rss_crime_online",
@@ -2098,7 +2288,8 @@
     "enabled": true,
     "notes": "Crime-focused online news outlet RSS feed.",
     "ingest_method": "rss",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "discovery_only"
   },
   {
     "source_id": "yt_abc7_la",
@@ -2109,7 +2300,8 @@
     "enabled": true,
     "notes": "KABC-TV Los Angeles YouTube with crime and breaking news coverage.",
     "ingest_method": "youtube_api",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "secondary"
   },
   {
     "source_id": "yt_fox11_la",
@@ -2120,7 +2312,8 @@
     "enabled": true,
     "notes": "KTTV FOX 11 LA YouTube channel with crime and breaking news.",
     "ingest_method": "youtube_api",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "secondary"
   },
   {
     "source_id": "yt_abc7_chicago",
@@ -2131,7 +2324,8 @@
     "enabled": true,
     "notes": "WLS-TV Chicago YouTube with crime and courts coverage.",
     "ingest_method": "youtube_api",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "secondary"
   },
   {
     "source_id": "yt_nbc5_chicago",
@@ -2142,7 +2336,8 @@
     "enabled": true,
     "notes": "WMAQ-TV Chicago YouTube channel with local crime coverage.",
     "ingest_method": "youtube_api",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "secondary"
   },
   {
     "source_id": "yt_abc13_houston",
@@ -2153,7 +2348,8 @@
     "enabled": true,
     "notes": "KTRK-TV Houston YouTube with crime and courts coverage.",
     "ingest_method": "youtube_api",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "secondary"
   },
   {
     "source_id": "yt_fox26_houston",
@@ -2164,7 +2360,8 @@
     "enabled": true,
     "notes": "KRIV FOX 26 Houston YouTube with crime coverage.",
     "ingest_method": "youtube_api",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "secondary"
   },
   {
     "source_id": "yt_wfaa_dallas",
@@ -2175,7 +2372,8 @@
     "enabled": true,
     "notes": "WFAA-TV Dallas YouTube channel with investigative crime reporting.",
     "ingest_method": "youtube_api",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "secondary"
   },
   {
     "source_id": "yt_fox4_dallas",
@@ -2186,7 +2384,8 @@
     "enabled": true,
     "notes": "KDFW FOX 4 DFW YouTube channel.",
     "ingest_method": "youtube_api",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "secondary"
   },
   {
     "source_id": "yt_abc15_phoenix",
@@ -2197,7 +2396,8 @@
     "enabled": true,
     "notes": "KNXV-TV Phoenix YouTube with crime and public safety coverage.",
     "ingest_method": "youtube_api",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "secondary"
   },
   {
     "source_id": "yt_fox10_phoenix",
@@ -2208,7 +2408,8 @@
     "enabled": true,
     "notes": "KSAZ FOX 10 Phoenix YouTube channel with crime stories.",
     "ingest_method": "youtube_api",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "secondary"
   },
   {
     "source_id": "yt_12news_phoenix",
@@ -2219,7 +2420,8 @@
     "enabled": true,
     "notes": "KPNX 12News Phoenix YouTube with local crime and courts.",
     "ingest_method": "youtube_api",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "secondary"
   },
   {
     "source_id": "yt_fox5_vegas",
@@ -2230,7 +2432,8 @@
     "enabled": true,
     "notes": "KVVU FOX 5 Las Vegas YouTube with crime coverage.",
     "ingest_method": "youtube_api",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "secondary"
   },
   {
     "source_id": "yt_8newsnow_vegas",
@@ -2241,7 +2444,8 @@
     "enabled": true,
     "notes": "KLAS-TV Las Vegas YouTube with crime and public safety.",
     "ingest_method": "youtube_api",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "secondary"
   },
   {
     "source_id": "yt_fox5_atlanta",
@@ -2252,7 +2456,8 @@
     "enabled": true,
     "notes": "WAGA FOX 5 Atlanta YouTube with crime and courts coverage.",
     "ingest_method": "youtube_api",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "secondary"
   },
   {
     "source_id": "yt_wsb_atlanta",
@@ -2263,7 +2468,8 @@
     "enabled": true,
     "notes": "WSB-TV Atlanta YouTube channel with investigative reports.",
     "ingest_method": "youtube_api",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "secondary"
   },
   {
     "source_id": "yt_kiro7_seattle",
@@ -2274,7 +2480,8 @@
     "enabled": true,
     "notes": "KIRO-TV Seattle YouTube with crime coverage.",
     "ingest_method": "youtube_api",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "secondary"
   },
   {
     "source_id": "yt_fox13_seattle",
@@ -2285,7 +2492,8 @@
     "enabled": true,
     "notes": "KCPQ FOX 13 Seattle YouTube with crime and public safety.",
     "ingest_method": "youtube_api",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "secondary"
   },
   {
     "source_id": "yt_9news_denver",
@@ -2296,7 +2504,8 @@
     "enabled": true,
     "notes": "KUSA-TV Denver YouTube with crime and courts coverage.",
     "ingest_method": "youtube_api",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "secondary"
   },
   {
     "source_id": "yt_fox31_denver",
@@ -2307,7 +2516,8 @@
     "enabled": true,
     "notes": "KDVR FOX 31 Denver YouTube with crime coverage.",
     "ingest_method": "youtube_api",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "secondary"
   },
   {
     "source_id": "yt_wfla_tampa",
@@ -2318,7 +2528,8 @@
     "enabled": true,
     "notes": "WFLA-TV Tampa YouTube with crime and courts.",
     "ingest_method": "youtube_api",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "secondary"
   },
   {
     "source_id": "yt_fox13_tampa",
@@ -2329,7 +2540,8 @@
     "enabled": true,
     "notes": "WTVT FOX 13 Tampa Bay YouTube with crime coverage.",
     "ingest_method": "youtube_api",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "secondary"
   },
   {
     "source_id": "yt_wesh_orlando",
@@ -2340,7 +2552,8 @@
     "enabled": true,
     "notes": "WESH-TV Orlando YouTube with crime and public safety.",
     "ingest_method": "youtube_api",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "secondary"
   },
   {
     "source_id": "yt_nbc6_miami",
@@ -2351,7 +2564,8 @@
     "enabled": true,
     "notes": "WTVJ NBC 6 Miami YouTube with crime coverage.",
     "ingest_method": "youtube_api",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "secondary"
   },
   {
     "source_id": "yt_fox2_detroit",
@@ -2362,7 +2576,8 @@
     "enabled": true,
     "notes": "WJBK FOX 2 Detroit YouTube with crime coverage.",
     "ingest_method": "youtube_api",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "secondary"
   },
   {
     "source_id": "yt_fox29_philly",
@@ -2373,7 +2588,8 @@
     "enabled": true,
     "notes": "WTXF FOX 29 Philadelphia YouTube with crime coverage.",
     "ingest_method": "youtube_api",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "secondary"
   },
   {
     "source_id": "yt_nbc10_philly",
@@ -2384,7 +2600,8 @@
     "enabled": true,
     "notes": "WCAU NBC10 Philadelphia YouTube with crime and courts.",
     "ingest_method": "youtube_api",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "secondary"
   },
   {
     "source_id": "yt_fox9_minneapolis",
@@ -2395,7 +2612,8 @@
     "enabled": true,
     "notes": "KMSP FOX 9 Minneapolis YouTube with crime coverage.",
     "ingest_method": "youtube_api",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "secondary"
   },
   {
     "source_id": "yt_wbal_baltimore",
@@ -2406,7 +2624,8 @@
     "enabled": true,
     "notes": "WBAL-TV Baltimore YouTube with crime and courts coverage.",
     "ingest_method": "youtube_api",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "secondary"
   },
   {
     "source_id": "yt_wcpo_cincinnati",
@@ -2417,7 +2636,8 @@
     "enabled": true,
     "notes": "WCPO-TV Cincinnati YouTube with crime and court coverage.",
     "ingest_method": "youtube_api",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "secondary"
   },
   {
     "source_id": "yt_10tv_columbus",
@@ -2428,7 +2648,8 @@
     "enabled": true,
     "notes": "WBNS-TV Columbus YouTube with local crime coverage.",
     "ingest_method": "youtube_api",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "secondary"
   },
   {
     "source_id": "yt_wsmv_nashville",
@@ -2439,7 +2660,8 @@
     "enabled": true,
     "notes": "WSMV-TV Nashville YouTube with crime and courts.",
     "ingest_method": "youtube_api",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "secondary"
   },
   {
     "source_id": "yt_ksat_san_antonio",
@@ -2450,7 +2672,8 @@
     "enabled": true,
     "notes": "KSAT-TV San Antonio YouTube with crime and public safety.",
     "ingest_method": "youtube_api",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "secondary"
   },
   {
     "source_id": "yt_investigative_journalism_jcs",
@@ -2461,7 +2684,8 @@
     "enabled": true,
     "notes": "Criminal psychology analysis of interrogation footage and court proceedings.",
     "ingest_method": "youtube_api",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "secondary"
   },
   {
     "source_id": "yt_matt_orchard",
@@ -2472,7 +2696,8 @@
     "enabled": true,
     "notes": "In-depth analysis of criminal cases using public records and court footage.",
     "ingest_method": "youtube_api",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "secondary"
   },
   {
     "source_id": "yt_that_chapter",
@@ -2483,7 +2708,8 @@
     "enabled": true,
     "notes": "True crime case breakdowns using public records, bodycam, and court footage.",
     "ingest_method": "youtube_api",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "secondary"
   },
   {
     "source_id": "yt_explore_with_us",
@@ -2494,7 +2720,8 @@
     "enabled": true,
     "notes": "Interrogation room footage and case analysis using public records.",
     "ingest_method": "youtube_api",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "secondary"
   },
   {
     "source_id": "yt_law_crime_daily",
@@ -2505,6 +2732,7 @@
     "enabled": true,
     "notes": "Daily legal news and court case coverage podcast channel.",
     "ingest_method": "youtube_api",
-    "tier": "B"
+    "tier": "B",
+    "source_class": "secondary"
   }
 ]

@@ -109,6 +109,23 @@ llm:
   # Max tokens for narration
   narration_max_tokens: 4000
 
+# ─── v2: Two-lane pipeline gating ───
+artifact_gating:
+  # PASS requires at least one primary artifact found
+  pass_requires_primary_artifact: true
+  # Secondary sources capped at this score (forced MAYBE if no artifact)
+  secondary_pass_cap_score: 65
+  # Discovery-only sources can never PASS directly
+  discovery_only_never_pass: true
+  # Minimum confidence for an artifact to count as "found"
+  artifact_min_confidence: 0.7
+  # Hook score threshold for leads to enter artifact hunt
+  hunt_hook_threshold: 70
+  # Max search queries per lead during artifact hunt
+  hunt_max_queries: 8
+  # Max URLs to fetch per lead during artifact hunt
+  hunt_max_urls: 25
+
 # ─── Logging ───
 logging:
   level: "INFO"

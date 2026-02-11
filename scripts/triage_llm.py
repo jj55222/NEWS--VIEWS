@@ -16,7 +16,7 @@ import json
 import sys
 
 from scripts.config_loader import get_openrouter_client, get_policy, setup_logging
-from scripts.db import get_connection, get_candidates, init_db, update_triage
+from scripts.db import get_connection, get_candidates, has_primary_artifact, init_db, update_triage
 
 logger = setup_logging("triage_llm")
 
@@ -265,6 +265,37 @@ def triage(status: str = "NEW", limit: int = 200, dry_run: bool = False) -> dict
                 triage_result["status"] = "MAYBE"
             else:
                 triage_result["status"] = "KILL"
+
+            # ── v2 Artifact Gating ──────────────────────────────
+            source_class = cand.get("source_class", "secondary")
+            artifact_gating = get_policy("artifact_gating") or {}
+
+            # discovery_only sources can never PASS
+            if artifact_gating.get("discovery_only_never_pass", True):
+                if source_class == "discovery_only" and triage_result["status"] == "PASS":
+                    triage_result["status"] = "MAYBE"
+                    triage_result["reason"] = (
+                        f"[GATED] discovery_only source capped at MAYBE. "
+                        f"Original: {triage_result.get('reason', '')}"
+                    )
+                    logger.info("  Gating: discovery_only source %s capped at MAYBE", cid)
+
+            # secondary sources capped at score 65 unless primary artifact exists
+            if artifact_gating.get("pass_requires_primary_artifact", True):
+                cap = artifact_gating.get("secondary_pass_cap_score", 65)
+                min_conf = artifact_gating.get("artifact_min_confidence", 0.7)
+
+                if source_class == "secondary" and triage_result["status"] == "PASS":
+                    # Check if any primary artifact exists for this candidate's lead
+                    has_primary = has_primary_artifact(conn, cid, min_conf)
+                    if not has_primary:
+                        triage_result["score"] = min(score, cap)
+                        triage_result["status"] = "MAYBE"
+                        triage_result["reason"] = (
+                            f"[GATED] Secondary source without primary artifact capped at {cap}. "
+                            f"Original: {triage_result.get('reason', '')}"
+                        )
+                        logger.info("  Gating: secondary %s capped at MAYBE (no primary artifact)", cid)
 
             logger.info(
                 "  -> %s (score=%d) %s",
