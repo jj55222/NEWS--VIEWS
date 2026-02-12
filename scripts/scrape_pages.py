@@ -19,6 +19,12 @@ from urllib.parse import urljoin, urlparse
 import requests
 from bs4 import BeautifulSoup
 
+try:
+    import cloudscraper
+    _cloudscraper_available = True
+except ImportError:
+    _cloudscraper_available = False
+
 from scripts.config_loader import get_enabled_sources, setup_logging
 from scripts.db import get_connection, init_db, insert_candidate
 
@@ -55,12 +61,25 @@ def scrape_page_links(page_url: str) -> list[dict]:
         "Connection": "keep-alive",
         "Upgrade-Insecure-Requests": "1",
     }
+    resp = None
     try:
         resp = requests.get(page_url, headers=headers, timeout=30)
         resp.raise_for_status()
     except requests.RequestException as exc:
-        logger.warning("Failed to fetch %s: %s", page_url, exc)
-        return []
+        # If blocked (403/404) and cloudscraper is available, retry with it
+        status = getattr(resp, "status_code", None)
+        if _cloudscraper_available and status in (403, 404):
+            logger.info("Retrying %s with cloudscraper (got %s)...", page_url, status)
+            try:
+                scraper = cloudscraper.create_scraper()
+                resp = scraper.get(page_url, timeout=30)
+                resp.raise_for_status()
+            except Exception as retry_exc:
+                logger.warning("Failed to fetch %s (cloudscraper retry): %s", page_url, retry_exc)
+                return []
+        else:
+            logger.warning("Failed to fetch %s: %s", page_url, exc)
+            return []
 
     soup = BeautifulSoup(resp.text, "html.parser")
     base_url = f"{urlparse(page_url).scheme}://{urlparse(page_url).netloc}"
