@@ -80,6 +80,13 @@ def load_sources() -> list[dict]:
     return _sources_cache
 
 
+def reload_sources() -> list[dict]:
+    """Clear the sources cache and reload from disk."""
+    global _sources_cache
+    _sources_cache = None
+    return load_sources()
+
+
 def get_enabled_sources(source_type: str | None = None, tier: str | None = None) -> list[dict]:
     """Return enabled sources, optionally filtered by type and/or tier."""
     sources = load_sources()
