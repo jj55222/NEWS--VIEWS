@@ -65,25 +65,16 @@ def get_policy(section: str, key: str | None = None, default=None):
 
 
 # ── Sources ────────────────────────────────────────────────────────────────
-_sources_cache: list | None = None
-
-
 def load_sources() -> list[dict]:
-    """Load and cache sources_registry.json."""
-    global _sources_cache
-    if _sources_cache is not None:
-        return _sources_cache
+    """Load sources_registry.json fresh from disk every call."""
     if not SOURCES_PATH.exists():
         raise FileNotFoundError(f"Sources registry not found: {SOURCES_PATH}")
     with open(SOURCES_PATH, "r") as f:
-        _sources_cache = json.load(f)
-    return _sources_cache
+        return json.load(f)
 
 
 def reload_sources() -> list[dict]:
-    """Clear the sources cache and reload from disk."""
-    global _sources_cache
-    _sources_cache = None
+    """Reload sources from disk (alias for load_sources, kept for compat)."""
     return load_sources()
 
 

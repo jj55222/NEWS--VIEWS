@@ -19,7 +19,7 @@ import argparse
 import json
 import time
 
-from scripts.config_loader import ensure_dirs, reload_sources, setup_logging
+from scripts.config_loader import ensure_dirs, setup_logging
 from scripts.db import get_connection, init_db
 
 logger = setup_logging("pipeline")
@@ -39,7 +39,6 @@ def run_ingest(days: int = 7, limit: int | None = None, dry_run: bool = False,
                discovery_targets: frozenset[str] | None = None,
                raw_bodycam_only: bool = False) -> dict:
     """Run all ingestion methods (YouTube, RSS, page scraping)."""
-    reload_sources()  # always read latest sources_registry.json from disk
     combined = {"youtube": {}, "rss": {}, "pages": {}}
 
     if discovery_targets is None or "youtube" in discovery_targets:
@@ -119,7 +118,6 @@ def run_render(limit: int = 10, dry_run: bool = False) -> dict:
 def run_discover(days: int = 7, limit: int | None = None, dry_run: bool = False,
                  discovery_targets: frozenset[str] | None = None) -> dict:
     """Run lead discovery from RSS + pages."""
-    reload_sources()  # always read latest sources_registry.json from disk
     from scripts.discover_leads import discover
     logger.info("─── Discover Leads ───")
     return discover(days=days, limit=limit, dry_run=dry_run,
