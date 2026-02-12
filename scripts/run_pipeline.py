@@ -35,33 +35,45 @@ ALL_STAGES = list(dict.fromkeys(LANE_A_STAGES + LANE_B_STAGES))
 
 # ── Lane A runners (v1 candidate flow) ───────────────────────────────────
 
-def run_ingest(days: int = 7, limit: int | None = None, dry_run: bool = False) -> dict:
+def run_ingest(days: int = 7, limit: int | None = None, dry_run: bool = False,
+               discovery_targets: frozenset[str] | None = None,
+               raw_bodycam_only: bool = False) -> dict:
     """Run all ingestion methods (YouTube, RSS, page scraping)."""
     combined = {"youtube": {}, "rss": {}, "pages": {}}
 
-    from scripts.ingest_youtube import ingest as yt_ingest
-    logger.info("─── YouTube Ingest ───")
-    try:
-        combined["youtube"] = yt_ingest(days=days, limit=limit, dry_run=dry_run)
-    except Exception as exc:
-        logger.error("YouTube ingest failed: %s", exc)
-        combined["youtube"] = {"error": str(exc)}
+    if discovery_targets is None or "youtube" in discovery_targets:
+        from scripts.ingest_youtube import ingest as yt_ingest
+        logger.info("─── YouTube Ingest ───")
+        try:
+            combined["youtube"] = yt_ingest(days=days, limit=limit, dry_run=dry_run,
+                                            raw_bodycam_only=raw_bodycam_only)
+        except Exception as exc:
+            logger.error("YouTube ingest failed: %s", exc)
+            combined["youtube"] = {"error": str(exc)}
+    else:
+        logger.info("Skipping YouTube ingest (not in discovery targets).")
 
-    from scripts.ingest_rss import ingest as rss_ingest
-    logger.info("─── RSS Ingest ───")
-    try:
-        combined["rss"] = rss_ingest(days=days, limit=limit, dry_run=dry_run)
-    except Exception as exc:
-        logger.error("RSS ingest failed: %s", exc)
-        combined["rss"] = {"error": str(exc)}
+    if discovery_targets is None or "rss" in discovery_targets:
+        from scripts.ingest_rss import ingest as rss_ingest
+        logger.info("─── RSS Ingest ───")
+        try:
+            combined["rss"] = rss_ingest(days=days, limit=limit, dry_run=dry_run)
+        except Exception as exc:
+            logger.error("RSS ingest failed: %s", exc)
+            combined["rss"] = {"error": str(exc)}
+    else:
+        logger.info("Skipping RSS ingest (not in discovery targets).")
 
-    from scripts.scrape_pages import ingest as page_ingest
-    logger.info("─── Page Scrape ───")
-    try:
-        combined["pages"] = page_ingest(limit=limit, dry_run=dry_run)
-    except Exception as exc:
-        logger.error("Page scrape failed: %s", exc)
-        combined["pages"] = {"error": str(exc)}
+    if discovery_targets is None or "pages" in discovery_targets:
+        from scripts.scrape_pages import ingest as page_ingest
+        logger.info("─── Page Scrape ───")
+        try:
+            combined["pages"] = page_ingest(limit=limit, dry_run=dry_run)
+        except Exception as exc:
+            logger.error("Page scrape failed: %s", exc)
+            combined["pages"] = {"error": str(exc)}
+    else:
+        logger.info("Skipping page scraping (not in discovery targets).")
 
     return combined
 
@@ -103,11 +115,13 @@ def run_render(limit: int = 10, dry_run: bool = False) -> dict:
 
 # ── Lane B runners (v2 lead/artifact flow) ───────────────────────────────
 
-def run_discover(days: int = 7, limit: int | None = None, dry_run: bool = False) -> dict:
+def run_discover(days: int = 7, limit: int | None = None, dry_run: bool = False,
+                 discovery_targets: frozenset[str] | None = None) -> dict:
     """Run lead discovery from RSS + pages."""
     from scripts.discover_leads import discover
     logger.info("─── Discover Leads ───")
-    return discover(days=days, limit=limit, dry_run=dry_run)
+    return discover(days=days, limit=limit, dry_run=dry_run,
+                    discovery_targets=discovery_targets)
 
 
 def run_hunt(min_hook: int = 70, limit: int = 50, dry_run: bool = False) -> dict:
@@ -239,7 +253,9 @@ STAGE_RUNNERS = {
 
 def run_pipeline(stages: list[str] | None = None, days: int = 7,
                  limit: int | None = None, dry_run: bool = False,
-                 lane: str | None = None) -> dict:
+                 lane: str | None = None,
+                 discovery_targets: frozenset[str] | None = None,
+                 raw_bodycam_only: bool = False) -> dict:
     """Run the pipeline for specified stages (or all stages).
 
     Args:
@@ -248,6 +264,8 @@ def run_pipeline(stages: list[str] | None = None, days: int = 7,
         limit: Max items per stage.
         dry_run: Preview without writing.
         lane: 'a' for Lane A only, 'b' for Lane B only, None for both.
+        discovery_targets: Restrict collectors (youtube, rss, pages). None = all.
+        raw_bodycam_only: YouTube ingest: only raw-bodycam channels.
 
     Returns:
         dict mapping stage name to its results.
@@ -277,10 +295,20 @@ def run_pipeline(stages: list[str] | None = None, days: int = 7,
         runner = STAGE_RUNNERS[stage]
 
         kwargs = {"dry_run": dry_run}
-        if stage in ("ingest", "discover"):
+        if stage == "ingest":
             kwargs["days"] = days
             if limit:
                 kwargs["limit"] = limit
+            if discovery_targets is not None:
+                kwargs["discovery_targets"] = discovery_targets
+            if raw_bodycam_only:
+                kwargs["raw_bodycam_only"] = raw_bodycam_only
+        elif stage == "discover":
+            kwargs["days"] = days
+            if limit:
+                kwargs["limit"] = limit
+            if discovery_targets is not None:
+                kwargs["discovery_targets"] = discovery_targets
         elif stage == "hunt":
             kwargs["min_hook"] = 70
             if limit:
@@ -369,6 +397,9 @@ Examples:
   python -m scripts.run_pipeline --stage discover           # just discover
   python -m scripts.run_pipeline --stages discover,hunt     # discover + hunt
   python -m scripts.run_pipeline --dry-run                  # preview all
+  python -m scripts.run_pipeline --stage ingest --discovery-targets youtube --dry-run
+  python -m scripts.run_pipeline --stage ingest --discovery-targets youtube --raw-bodycam-only --dry-run
+  python -m scripts.run_pipeline --stage discover --discovery-targets rss --dry-run
         """,
     )
     parser.add_argument("--stage", type=str, help="Run a single stage.")
@@ -376,6 +407,10 @@ Examples:
     parser.add_argument("--lane", type=str, choices=["a", "b"], help="Run only Lane A or Lane B.")
     parser.add_argument("--days", type=int, default=7, help="Look-back days for ingest/discover (default: 7).")
     parser.add_argument("--limit", type=int, default=None, help="Limit items per stage.")
+    parser.add_argument("--discovery-targets", type=str, default=None,
+                        help="Comma-separated collectors to run: youtube,rss,pages (default: all).")
+    parser.add_argument("--raw-bodycam-only", action="store_true",
+                        help="YouTube ingest: only raw-bodycam channels.")
     parser.add_argument("--dry-run", action="store_true", help="Preview all stages without writing.")
     args = parser.parse_args()
 
@@ -386,9 +421,15 @@ Examples:
     else:
         stages = None
 
+    discovery_targets = None
+    if args.discovery_targets:
+        discovery_targets = frozenset(t.strip().lower() for t in args.discovery_targets.split(","))
+
     results = run_pipeline(
         stages=stages, days=args.days, limit=args.limit,
         dry_run=args.dry_run, lane=args.lane,
+        discovery_targets=discovery_targets,
+        raw_bodycam_only=args.raw_bodycam_only,
     )
     print("\n" + json.dumps(results, indent=2, default=str))
 

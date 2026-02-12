@@ -395,11 +395,24 @@ def discover_from_pages(limit: int | None = None, use_llm: bool = True,
 
 # ── Main ──────────────────────────────────────────────────────────────────
 def discover(days: int = 7, limit: int | None = None, use_llm: bool = True,
-             dry_run: bool = False) -> dict:
+             dry_run: bool = False,
+             discovery_targets: frozenset[str] | None = None) -> dict:
     """Run full discovery (RSS + pages) → case_leads."""
-    rss_stats = discover_from_rss(days=days, limit=limit, use_llm=use_llm, dry_run=dry_run)
-    page_stats = discover_from_pages(limit=limit, use_llm=use_llm, dry_run=dry_run)
-    return {"rss": rss_stats, "pages": page_stats}
+    result = {}
+
+    if discovery_targets is None or "rss" in discovery_targets:
+        result["rss"] = discover_from_rss(days=days, limit=limit, use_llm=use_llm, dry_run=dry_run)
+    else:
+        logger.info("Skipping RSS discovery (not in discovery targets).")
+        result["rss"] = {}
+
+    if discovery_targets is None or "pages" in discovery_targets:
+        result["pages"] = discover_from_pages(limit=limit, use_llm=use_llm, dry_run=dry_run)
+    else:
+        logger.info("Skipping page discovery (not in discovery targets).")
+        result["pages"] = {}
+
+    return result
 
 
 def main():
@@ -407,10 +420,17 @@ def main():
     parser.add_argument("--days", type=int, default=7, help="Look back N days (default: 7).")
     parser.add_argument("--limit", type=int, default=None, help="Max sources to process.")
     parser.add_argument("--no-llm", action="store_true", help="Use heuristic scoring only.")
+    parser.add_argument("--discovery-targets", type=str, default=None,
+                        help="Comma-separated collectors to run: rss,pages (default: all).")
     parser.add_argument("--dry-run", action="store_true", help="Preview without writing to DB.")
     args = parser.parse_args()
 
-    stats = discover(days=args.days, limit=args.limit, use_llm=not args.no_llm, dry_run=args.dry_run)
+    discovery_targets = None
+    if args.discovery_targets:
+        discovery_targets = frozenset(t.strip().lower() for t in args.discovery_targets.split(","))
+
+    stats = discover(days=args.days, limit=args.limit, use_llm=not args.no_llm,
+                     dry_run=args.dry_run, discovery_targets=discovery_targets)
     print(json.dumps(stats, indent=2))
 
 

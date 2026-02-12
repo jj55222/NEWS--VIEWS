@@ -136,6 +136,50 @@ Edit without code changes:
 Open `notebooks/run_pipeline_colab.ipynb` in Google Colab, set your API keys,
 and run each cell.
 
+## Operator Commands
+
+Isolate individual collectors during testing with `--discovery-targets`:
+
+```bash
+# YouTube-only ingest
+python -m scripts.run_pipeline --stage ingest --discovery-targets youtube --dry-run
+
+# RSS-only ingest
+python -m scripts.run_pipeline --stage ingest --discovery-targets rss --dry-run
+
+# Page-only ingest
+python -m scripts.run_pipeline --stage ingest --discovery-targets pages --dry-run
+
+# RSS-only lead discovery
+python -m scripts.run_pipeline --stage discover --discovery-targets rss --dry-run
+
+# Page-only lead discovery
+python -m scripts.run_pipeline --stage discover --discovery-targets pages --dry-run
+```
+
+Focus YouTube ingest on raw bodycam footage channels:
+
+```bash
+# Raw bodycam channels only
+python -m scripts.run_pipeline --stage ingest --discovery-targets youtube --raw-bodycam-only --dry-run
+
+# Direct script usage
+python -m scripts.ingest_youtube --raw-bodycam-only --dry-run
+
+# Discover script with targeting
+python -m scripts.discover_leads --discovery-targets rss --dry-run
+```
+
+Validation commands (run after changing discovery/ingest logic):
+
+```bash
+python -m scripts.run_pipeline --help
+python -m scripts.discover_leads --help
+python -m scripts.ingest_youtube --help
+python -m scripts.run_pipeline --stage ingest --discovery-targets youtube --raw-bodycam-only --limit 2 --days 1 --dry-run
+python -m scripts.run_pipeline --stage discover --discovery-targets rss --limit 1 --days 1 --dry-run
+```
+
 ## Legacy Scripts
 
 The original pipeline scripts are preserved:

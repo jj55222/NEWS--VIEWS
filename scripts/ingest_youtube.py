@@ -246,12 +246,39 @@ def fetch_uploads_via_rss(channel_id: str, published_after: str) -> list[dict]:
     return results
 
 
+def _is_raw_bodycam_channel(source: dict) -> bool:
+    """Return True if source looks like a raw-footage channel, not commentary."""
+    text = f"{source.get('name', '')} {source.get('notes', '')}".lower()
+
+    # Exclude signals: commentary-style channels
+    exclude_signals = [
+        "analysis", "review", "lawyer", "news", "commentary",
+        "explained", "breakdown", "reaction",
+    ]
+    for signal in exclude_signals:
+        if signal in text:
+            return False
+
+    # Include signals: raw footage channels
+    include_signals = [
+        "bodycam", "dashcam", "body cam", "body-cam",
+        "unedited", "raw footage", "bwc", "body-worn",
+        "body worn",
+    ]
+    for signal in include_signals:
+        if signal in text:
+            return True
+
+    return False
+
+
 def make_candidate_id(source_id: str, video_id: str) -> str:
     """Generate a deterministic candidate ID."""
     return hashlib.sha256(f"{source_id}:{video_id}".encode()).hexdigest()[:16]
 
 
-def ingest(days: int = 7, limit: int | None = None, dry_run: bool = False) -> dict:
+def ingest(days: int = 7, limit: int | None = None, dry_run: bool = False,
+           raw_bodycam_only: bool = False) -> dict:
     """Run the YouTube ingestion pipeline.
 
     Uses YouTube Data API v3 if YOUTUBE_API_KEY is set, otherwise falls back
@@ -270,6 +297,11 @@ def ingest(days: int = 7, limit: int | None = None, dry_run: bool = False) -> di
     sources = get_enabled_sources(source_type="youtube_channel")
     if limit:
         sources = sources[:limit]
+
+    if raw_bodycam_only:
+        pre_count = len(sources)
+        sources = [s for s in sources if _is_raw_bodycam_channel(s)]
+        logger.info("Raw-bodycam filter: %d/%d channels passed.", len(sources), pre_count)
 
     published_after = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -356,10 +388,13 @@ def main():
     parser = argparse.ArgumentParser(description="Ingest YouTube uploads into pipeline DB.")
     parser.add_argument("--days", type=int, default=7, help="Look back N days (default: 7).")
     parser.add_argument("--limit", type=int, default=None, help="Max channels to process.")
+    parser.add_argument("--raw-bodycam-only", action="store_true",
+                        help="Only ingest from channels matching raw-bodycam heuristic.")
     parser.add_argument("--dry-run", action="store_true", help="Preview without writing to DB.")
     args = parser.parse_args()
 
-    stats = ingest(days=args.days, limit=args.limit, dry_run=args.dry_run)
+    stats = ingest(days=args.days, limit=args.limit, dry_run=args.dry_run,
+                   raw_bodycam_only=args.raw_bodycam_only)
     print(json.dumps(stats, indent=2))
 
 
