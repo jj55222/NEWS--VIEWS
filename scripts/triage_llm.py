@@ -16,7 +16,7 @@ import json
 import sys
 
 from scripts.config_loader import get_openrouter_client, get_policy, setup_logging
-from scripts.db import get_connection, get_candidates, has_primary_artifact, init_db, update_triage
+from scripts.db import get_connection, get_candidates, init_db, update_triage
 
 logger = setup_logging("triage_llm")
 
@@ -25,58 +25,69 @@ TRIAGE_SYSTEM_PROMPT = """\
 You are a content triage analyst for a factual long-form video channel focused on
 law enforcement incidents (bodycam, dashcam, court proceedings, critical incidents).
 
-Your job: evaluate whether a candidate video/article is worth producing into a
-high-retention story. Score it on these dimensions:
+Your job: evaluate whether a candidate is a compelling CASE worth producing, even
+if footage/transcript hasn't been found yet. Score it on two axes:
 
-SCORING (0-100 total):
-- hook_clarity (0-25): Can viewers understand what's happening in the first 15 seconds?
-- stakes (0-25): Are the stakes obvious? (danger, chase, weapon, missing person, serious crash)
-  This maps to "escalation" in the score.
-- escalation (0-25): Does it intensify from routine to wild?
+CASE SCORING (case_score 0-100):
+- hook_clarity (0-25): Can viewers immediately understand the incident?
+- escalation (0-25): Do the stakes intensify? (routine -> wild, danger, weapon, chase)
 - character (0-15): Is there a memorable quote, decision, or personality?
 - resolution (0-15): Is there a clear outcome (arrest, twist, reveal)?
+- uniqueness (0-10): Is this story distinct from typical content?
+- quality (0-10): Source credibility, detail richness
 
-Note: "stakes" and "escalation" share the 0-25 range. Combine them: the
-"escalation" field in your output should reflect BOTH stakes intensity AND
-escalation arc. Total max = 25 for hook_clarity + 25 for escalation + 15 character + 15 resolution + 10 quality + 10 uniqueness = 100.
+ARTIFACT SCORING (artifact_score 0-100):
+- How likely is it that primary source material exists (bodycam, dashcam, court video,
+  FOIA-obtainable docs, surveillance, 911 audio)?
+- 80-100: Evidence explicitly referenced (e.g. "bodycam released", "court hearing video")
+- 50-79: Likely exists based on incident type (officer-involved shooting, pursuit, arrest)
+- 20-49: Possible but unclear
+- 0-19: Unlikely to have obtainable primary footage
+
+ROUTING (set these booleans):
+- needs_transcript: true if transcript is missing and would help evaluation
+- needs_artifact_hunt: true if case is promising but primary artifacts not yet found
+
+COMBINED SCORE:
+- score = round(0.75 * case_score + 0.25 * artifact_score)
 
 HARD KILL rules (auto score 0, status KILL):
 - Duration < 60 seconds (unless clearly a short candidate)
-- No transcript AND description is too vague AND audio likely poor
 - Risk flags: minors in sensitive contexts, explicit sexual violence, extreme gore
 
-VIRAL PATTERNS (a good candidate has >= 3 of these):
-1) Confusion -> clarity in first 15 seconds
-2) Stakes are obvious
-3) Escalation (routine -> wild)
-4) Character moment (memorable quote/decision)
-5) Resolution (arrest/twist/reveal/outcome)
+PASS threshold: score >= 70 (CASE QUALITY drives this — don't block PASS just because
+artifacts aren't found yet. That's what the artifact hunter is for.)
+MAYBE: score 50-69
+KILL: score < 50
 
 OUTPUT: Return ONLY valid JSON matching this exact schema:
 {
   "status": "PASS|MAYBE|KILL",
   "score": <0-100>,
+  "case_score": <0-100>,
+  "artifact_score": <0-100>,
   "reason": "<1-3 sentences explaining the verdict>",
   "patterns": {
     "hook_clarity": <0-25>,
-    "stakes": <0-25>,
     "escalation": <0-25>,
     "character": <0-15>,
-    "resolution": <0-15>
+    "resolution": <0-15>,
+    "uniqueness": <0-10>,
+    "quality": <0-10>
   },
   "incident_type": "pursuit|dui|domestic|welfare_check|theft|shooting|use_of_force|fraud|assault|missing_person|unknown",
   "risk_flags": ["minors", "doxxing_risk", "graphic_injury", "sexual_violence", "extreme_gore"],
+  "needs_transcript": <true|false>,
+  "needs_artifact_hunt": <true|false>,
+  "artifact_hints": ["bodycam", "dashcam", "court", "affidavit", "surveillance", "911_audio", "FOIA"],
   "shorts_moments": [
     {"start_sec": <number>, "end_sec": <number>, "why": "<brief reason>"}
   ],
   "facts_to_verify": ["<claim 1>", "<claim 2>"]
 }
 
-PASS threshold: score >= 70
-MAYBE: score 50-69
-KILL: score < 50
-
-Be strict. Only PASS truly compelling stories. Most candidates should be MAYBE or KILL.
+Be strict on KILL — only truly off-topic, non-case, or policy-risky items.
+Be generous on PASS — if the CASE is compelling, PASS it even if artifacts are unknown.
 """
 
 
@@ -149,6 +160,13 @@ def parse_triage_response(raw: str) -> dict | None:
     if "patterns" not in data:
         data["patterns"] = {}
 
+    # Ensure new routing fields default to false
+    data.setdefault("needs_transcript", False)
+    data.setdefault("needs_artifact_hunt", False)
+    data.setdefault("artifact_hints", [])
+    data.setdefault("case_score", data["score"])
+    data.setdefault("artifact_score", 0)
+
     return data
 
 
@@ -169,30 +187,8 @@ def apply_hard_filters(candidate: dict, policy: dict) -> dict | None:
             "facts_to_verify": [],
         }
 
-    desc = candidate.get("description", "") or ""
-    transcript = candidate.get("transcript_text", "") or ""
-    min_text = policy.get("triage", {}).get("min_text_length", 80)
-
-    if not transcript and len(desc) < min_text:
-        quality = candidate.get("quality_signals_json", "{}")
-        if isinstance(quality, str):
-            try:
-                quality = json.loads(quality)
-            except json.JSONDecodeError:
-                quality = {}
-        audio_guess = quality.get("audio_quality_guess", "unknown")
-        if audio_guess in ("poor", "unknown") and not transcript:
-            return {
-                "status": "KILL",
-                "score": 0,
-                "reason": "No transcript, vague description, and likely poor audio.",
-                "patterns": {},
-                "incident_type": "unknown",
-                "risk_flags": [],
-                "shorts_moments": [],
-                "facts_to_verify": [],
-            }
-
+    # No transcript + vague description: flag for transcript fetch, don't kill
+    # (The case might still be compelling based on title/context alone)
     return None
 
 
@@ -220,11 +216,24 @@ def triage(status: str = "NEW", limit: int = 200, dry_run: bool = False) -> dict
     temperature = get_policy("llm", "triage_temperature", 0.2)
     max_tokens = get_policy("llm", "triage_max_tokens", 1500)
 
-    stats = {"processed": 0, "pass_count": 0, "maybe_count": 0, "kill_count": 0, "errors": 0}
+    stats = {"processed": 0, "pass_count": 0, "maybe_count": 0, "kill_count": 0, "errors": 0, "deduped": 0}
+
+    # Deduplicate candidates by URL or normalized title+domain
+    seen_keys = set()
 
     for cand in candidates:
         cid = cand["candidate_id"]
         title = (cand.get("title") or "")[:60]
+
+        # Dedupe: skip if we've seen an identical URL or title+domain
+        url = cand.get("url", "")
+        dedup_key = url if url else f"{title}|{cand.get('source_id', '')}"
+        if dedup_key in seen_keys:
+            logger.debug("Skipping duplicate: %s — %s", cid, title)
+            stats["deduped"] += 1
+            continue
+        seen_keys.add(dedup_key)
+
         logger.info("Triaging: %s — %s", cid, title)
 
         # Hard filters first
@@ -266,36 +275,16 @@ def triage(status: str = "NEW", limit: int = 200, dry_run: bool = False) -> dict
             else:
                 triage_result["status"] = "KILL"
 
-            # ── v2 Artifact Gating ──────────────────────────────
+            # ── v2 Artifact Routing (not blocking) ─────────────
             source_class = cand.get("source_class", "secondary")
-            artifact_gating = get_policy("artifact_gating") or {}
 
-            # discovery_only sources can never PASS
-            if artifact_gating.get("discovery_only_never_pass", True):
-                if source_class == "discovery_only" and triage_result["status"] == "PASS":
-                    triage_result["status"] = "MAYBE"
-                    triage_result["reason"] = (
-                        f"[GATED] discovery_only source capped at MAYBE. "
-                        f"Original: {triage_result.get('reason', '')}"
-                    )
-                    logger.info("  Gating: discovery_only source %s capped at MAYBE", cid)
-
-            # secondary sources capped at score 65 unless primary artifact exists
-            if artifact_gating.get("pass_requires_primary_artifact", True):
-                cap = artifact_gating.get("secondary_pass_cap_score", 65)
-                min_conf = artifact_gating.get("artifact_min_confidence", 0.7)
-
-                if source_class == "secondary" and triage_result["status"] == "PASS":
-                    # Check if any primary artifact exists for this candidate's lead
-                    has_primary = has_primary_artifact(conn, cid, min_conf)
-                    if not has_primary:
-                        triage_result["score"] = min(score, cap)
-                        triage_result["status"] = "MAYBE"
-                        triage_result["reason"] = (
-                            f"[GATED] Secondary source without primary artifact capped at {cap}. "
-                            f"Original: {triage_result.get('reason', '')}"
-                        )
-                        logger.info("  Gating: secondary %s capped at MAYBE (no primary artifact)", cid)
+            # For secondary/discovery_only sources, flag for artifact hunt
+            # but don't block PASS — let case quality drive the decision
+            if source_class in ("secondary", "discovery_only"):
+                if triage_result["status"] in ("PASS", "MAYBE"):
+                    triage_result["needs_artifact_hunt"] = True
+                    if source_class == "discovery_only":
+                        logger.info("  Routing: discovery_only %s flagged for artifact hunt", cid)
 
             logger.info(
                 "  -> %s (score=%d) %s",

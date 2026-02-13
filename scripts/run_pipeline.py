@@ -25,7 +25,7 @@ from scripts.db import get_connection, init_db
 logger = setup_logging("pipeline")
 
 # Lane A stages (v1 candidate flow)
-LANE_A_STAGES = ["ingest", "enrich", "triage", "corroborate", "package", "render"]
+LANE_A_STAGES = ["ingest", "enrich", "triage", "transcripts", "corroborate", "package", "render"]
 
 # Lane B stages (v2 lead/artifact flow)
 LANE_B_STAGES = ["discover", "hunt", "verify", "package_v2", "render"]
@@ -85,8 +85,15 @@ def run_enrich(limit: int = 200, dry_run: bool = False) -> dict:
     return enrich(status="NEW", limit=limit, dry_run=dry_run)
 
 
+def run_transcripts(status: str | None = None, limit: int = 200, dry_run: bool = False) -> dict:
+    """Fetch YouTube transcripts via yt-dlp captions."""
+    from scripts.transcripts_ytdlp import fetch_transcripts
+    logger.info("─── Fetch Transcripts (yt-dlp) ───")
+    return fetch_transcripts(status=status, limit=limit, dry_run=dry_run)
+
+
 def run_triage(limit: int = 200, dry_run: bool = False) -> dict:
-    """Run LLM triage (with v2 artifact gating)."""
+    """Run LLM triage (with case_score + artifact routing)."""
     from scripts.triage_llm import triage
     logger.info("─── LLM Triage ───")
     return triage(status="NEW", limit=limit, dry_run=dry_run)
@@ -238,6 +245,7 @@ STAGE_RUNNERS = {
     "ingest": run_ingest,
     "enrich": run_enrich,
     "triage": run_triage,
+    "transcripts": run_transcripts,
     "corroborate": run_corroborate,
     "package": run_package,
     "render": run_render,
