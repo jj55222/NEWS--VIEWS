@@ -115,6 +115,14 @@ llm:
   # Max tokens for narration
   narration_max_tokens: 4000
 
+# ─── Forwarding: PASS + MAYBE → case_leads for artifact hunt ───
+# "No more lost alpha" — every MAYBE is forwarded alongside PASS.
+forwarding:
+  # Master toggle: forward MAYBEs to artifact hunt (set false to revert)
+  route_maybes_to_artifact_hunt: true
+  # Minimum triage_score for a MAYBE to be forwarded (0 = forward all)
+  maybe_score_min_to_forward: 0
+
 # ─── v2: Artifact hunting config (routing, not gating) ───
 # PASS is no longer blocked by missing artifacts — triage sets
 # needs_artifact_hunt=true and downstream hunts for them.

@@ -268,22 +268,33 @@ def classify_result(url: str, title: str, snippet: str) -> dict:
 def hunt(min_hook: int = 70, limit: int = 50, dry_run: bool = False) -> dict:
     """Run artifact hunt for qualifying leads.
 
+    Processes both PASS-promoted and MAYBE-promoted leads.  PASS leads are
+    processed first (higher hook_score).  For forwarded MAYBEs the min_hook
+    threshold is relaxed to forwarding.maybe_score_min_to_forward (default 0)
+    so they aren't silently filtered out.
+
     Returns:
         dict with keys: leads_hunted, artifacts_found, primary_found, leads_upgraded, errors
     """
     init_db()
     conn = get_connection()
 
-    leads = get_leads(conn, status="NEW", min_hook_score=min_hook, limit=limit)
+    # Forwarded MAYBEs may have scores below min_hook — use the lower of
+    # min_hook and the forwarding maybe floor so they aren't dropped.
+    fwd_cfg = get_policy("forwarding") or {}
+    maybe_floor = fwd_cfg.get("maybe_score_min_to_forward", 0)
+    effective_min = min(min_hook, maybe_floor) if fwd_cfg.get("route_maybes_to_artifact_hunt", True) else min_hook
+
+    leads = get_leads(conn, status="NEW", min_hook_score=effective_min, limit=limit)
     if not leads:
-        logger.info("No NEW leads with hook_score >= %d to hunt.", min_hook)
+        logger.info("No NEW leads with hook_score >= %d to hunt.", effective_min)
         conn.close()
         return {"leads_hunted": 0, "artifacts_found": 0, "primary_found": 0,
                 "leads_upgraded": 0, "errors": 0}
 
-    max_queries = get_policy("artifact_gating", "hunt_max_queries", 8)
-    max_urls = get_policy("artifact_gating", "hunt_max_urls", 25)
-    min_confidence = get_policy("artifact_gating", "artifact_min_confidence", 0.7)
+    max_queries = get_policy("artifact_hunting", "hunt_max_queries", 8)
+    max_urls = get_policy("artifact_hunting", "hunt_max_urls", 25)
+    min_confidence = get_policy("artifact_hunting", "artifact_min_confidence", 0.7)
 
     stats = {"leads_hunted": 0, "artifacts_found": 0, "primary_found": 0,
              "leads_upgraded": 0, "errors": 0}

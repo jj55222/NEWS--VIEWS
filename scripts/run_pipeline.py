@@ -25,7 +25,7 @@ from scripts.db import get_connection, init_db
 logger = setup_logging("pipeline")
 
 # Lane A stages (v1 candidate flow)
-LANE_A_STAGES = ["ingest", "enrich", "triage", "transcripts", "corroborate", "package", "render"]
+LANE_A_STAGES = ["ingest", "enrich", "triage", "forward", "transcripts", "corroborate", "package", "render"]
 
 # Lane B stages (v2 lead/artifact flow)
 LANE_B_STAGES = ["discover", "hunt", "verify", "package_v2", "render"]
@@ -97,6 +97,13 @@ def run_triage(limit: int = 200, dry_run: bool = False) -> dict:
     from scripts.triage_llm import triage
     logger.info("─── LLM Triage ───")
     return triage(status="NEW", limit=limit, dry_run=dry_run)
+
+
+def run_forward(limit: int = 500, dry_run: bool = False) -> dict:
+    """Forward PASS+MAYBE candidates to case_leads for artifact hunt."""
+    from scripts.forward_candidates import forward
+    logger.info("─── Forward Candidates ───")
+    return forward(limit=limit, dry_run=dry_run)
 
 
 def run_corroborate(limit: int = 50, dry_run: bool = False) -> dict:
@@ -188,7 +195,7 @@ def run_package_v2(limit: int = 20, dry_run: bool = False) -> dict:
 
     logger.info("─── Package Bundles (v2) ───")
     conn = get_connection()
-    min_conf = get_policy("artifact_gating", "artifact_min_confidence", 0.7)
+    min_conf = get_policy("artifact_hunting", "artifact_min_confidence", 0.7)
     leads = get_leads(conn, status="ARTIFACT_FOUND", limit=limit)
 
     stats = {"leads_processed": 0, "bundles_created": 0, "errors": 0}
@@ -245,6 +252,7 @@ STAGE_RUNNERS = {
     "ingest": run_ingest,
     "enrich": run_enrich,
     "triage": run_triage,
+    "forward": run_forward,
     "transcripts": run_transcripts,
     "corroborate": run_corroborate,
     "package": run_package,
@@ -384,7 +392,8 @@ def main():
 Lane A stages (v1 candidate flow):
   ingest        Pull new candidates from YouTube, RSS, press pages
   enrich        Add transcripts, entities, quality signals
-  triage        LLM scoring → PASS / MAYBE / KILL (with artifact gating)
+  triage        LLM scoring → PASS / MAYBE / KILL (complete-case anchors)
+  forward       Promote PASS+MAYBE to case_leads for artifact hunt
   corroborate   Gather supporting sources for PASS candidates
   package       Build timeline, narration, shorts plan
   render        Download, cut, caption, export videos
