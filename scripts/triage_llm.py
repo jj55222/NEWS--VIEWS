@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """LLM-based triage scoring for pipeline candidates.
 
-Reads NEW candidates, calls the LLM with the triage prompt, and updates
-triage_status / score / rationale using the defined JSON schema.
+Reads NEW candidates, calls the LLM with the complete-case triage rubric,
+and updates triage_status / score / rationale.  Implements:
+- "Complete case" anchor system (R2): PASS requires >=2 completeness anchors
+- Sensitive-inclusive routing (R5): no auto-kill for minors/CSA/trafficking
+- Follow-up vectors (R6): every PASS/MAYBE includes actionable next steps
+- Threshold-tunable scoring (R7): model_score + anchor count => decision
 
 Usage:
     python -m scripts.triage_llm                        # triage all NEW candidates
@@ -22,51 +26,89 @@ logger = setup_logging("triage_llm")
 
 # ── Triage prompt ──────────────────────────────────────────────────────────
 TRIAGE_SYSTEM_PROMPT = """\
-You are a content triage analyst for a factual long-form video channel focused on
-law enforcement incidents (bodycam, dashcam, court proceedings, critical incidents).
+You are a triage analyst for a factual long-form video channel covering law
+enforcement incidents (bodycam, dashcam, court proceedings, critical incidents,
+officer misconduct, criminal cases).
 
-Your job: evaluate whether a candidate is a compelling CASE worth producing, even
-if footage/transcript hasn't been found yet. Score it on two axes:
+## Your job
+Evaluate whether a candidate is a COMPLETE CASE worth producing.
 
-CASE SCORING (case_score 0-100):
-- hook_clarity (0-25): Can viewers immediately understand the incident?
-- escalation (0-25): Do the stakes intensify? (routine -> wild, danger, weapon, chase)
-- character (0-15): Is there a memorable quote, decision, or personality?
-- resolution (0-15): Is there a clear outcome (arrest, twist, reveal)?
-- uniqueness (0-10): Is this story distinct from typical content?
-- quality (0-10): Source credibility, detail richness
+## Completeness anchors (critical — count how many are present)
+A1. Suspect / defendant / officer NAMED (or uniquely identified)
+A2. Charges / arrest / indictment / court hearing EXPLICITLY stated
+A3. Jurisdiction is explicit (city/county/state + agency)
+A4. Follow-up target is explicit: bodycam release, affidavit, interrogation,
+    court filings, dashcam, surveillance, FOIA mention
+A5. Multi-source confirmation (two outlets / official + media) OR strong
+    official source (DA / PD / AG / court)
 
-ARTIFACT SCORING (artifact_score 0-100):
-- How likely is it that primary source material exists (bodycam, dashcam, court video,
-  FOIA-obtainable docs, surveillance, 911 audio)?
-- 80-100: Evidence explicitly referenced (e.g. "bodycam released", "court hearing video")
-- 50-79: Likely exists based on incident type (officer-involved shooting, pursuit, arrest)
-- 20-49: Possible but unclear
-- 0-19: Unlikely to have obtainable primary footage
+## Decision rules
+PASS — Complete case (immediately actionable)
+  * At least 2 completeness anchors present, AND
+  * model_score >= 70 (see scoring below)
+  * If anchors >= 3 and model_score >= 60, also PASS (strong anchor evidence
+    compensates for slightly lower narrative quality)
 
-ROUTING (set these booleans):
-- needs_transcript: true if transcript is missing and would help evaluation
-- needs_artifact_hunt: true if case is promising but primary artifacts not yet found
+MAYBE — Nearly complete (missing exactly 1 key anchor)
+  * Clearly a real case (not generic news), AND
+  * Missing exactly one major anchor, BUT has a clear path to completion
+    (e.g. "arrest warrant issued", "suspect identified but charges pending",
+     "court date scheduled but charges unclear")
+  * model_score >= 55 with at least 1 anchor
+  * OR: anchors >= 2 but 55 <= model_score < 70
 
-COMBINED SCORE:
-- score = round(0.75 * case_score + 0.25 * artifact_score)
+KILL — Not actionable
+  * Off-topic: sports / weather / politics / economics / general policy
+  * Not a discrete case (no specific incident, no parties, no actionable follow-up)
+  * Pure "seed" — investigation underway with zero anchors
+  * Mostly opinion/analysis with no case facts
+  * model_score < 55 OR (model_score < 70 AND zero anchors)
 
-HARD KILL rules (auto score 0, status KILL):
-- Duration < 60 seconds (unless clearly a short candidate)
-- Risk flags: minors in sensitive contexts, explicit sexual violence, extreme gore
+## model_score (0–100) — narrative + case quality
+Score the CASE on these dimensions:
+  hook_clarity  (0–25): Can viewers immediately understand the incident?
+  escalation    (0–25): Do the stakes intensify? (routine -> wild, danger, weapon, chase)
+  character     (0–15): Memorable quote, decision, or personality?
+  resolution    (0–15): Clear outcome (arrest, twist, reveal)?
+  uniqueness    (0–10): Distinct from typical content?
+  quality       (0–10): Source credibility, detail richness
+model_score = sum of all dimensions (0–100).
+Give genuine scores — KILL scores should still vary; don't just output 0.
 
-PASS threshold: score >= 70 (CASE QUALITY drives this — don't block PASS just because
-artifacts aren't found yet. That's what the artifact hunter is for.)
-MAYBE: score 50-69
-KILL: score < 50
+## Sensitive cases — INCLUDE, do not auto-kill
+Sensitive categories (minors, CSA, trafficking, sexual violence, graphic
+violence) ARE eligible for PASS/MAYBE.  When present:
+  * Set sensitivity_review = true
+  * Set sensitivity_type to one of: minors | CSA | trafficking |
+    sexual_violence | graphic_violence
+  * Do NOT include victim identity if minor / CSA
+  * Avoid explicit sexual details
+  * Keep output to "facts + procedural status" only
+This is a routing/handling flag, not a block.
 
-OUTPUT: Return ONLY valid JSON matching this exact schema:
+## Follow-up vectors (required for PASS and MAYBE)
+For PASS/MAYBE, provide followup_vectors — a list of 2–5 items from:
+  court_docket, charging_docs, affidavit, bodycam, interrogation,
+  dashcam, surveillance, 911_audio, press_conference, civil_suit
+Also provide:
+  why_complete_or_missing: 1–2 sentences explaining case completeness
+  missing_anchor: (MAYBE only) exactly one anchor id that's missing
+
+## Routing flags (set these booleans)
+  needs_transcript: true if transcript is missing and would help evaluation
+  needs_artifact_hunt: true if case is promising but primary artifacts not found
+
+## OUTPUT — Return ONLY valid JSON matching this schema:
 {
   "status": "PASS|MAYBE|KILL",
-  "score": <0-100>,
-  "case_score": <0-100>,
-  "artifact_score": <0-100>,
-  "reason": "<1-3 sentences explaining the verdict>",
+  "model_score": <0-100>,
+  "anchors_present": ["A1","A2","A3","A4","A5"],
+  "sensitivity_review": <true|false>,
+  "sensitivity_type": <string|null>,
+  "followup_vectors": ["court_docket","bodycam",...],
+  "missing_anchor": <string|null>,
+  "why_complete_or_missing": "<1-2 sentences>",
+  "reason": "<1-2 sentences factual verdict>",
   "patterns": {
     "hook_clarity": <0-25>,
     "escalation": <0-25>,
@@ -75,20 +117,31 @@ OUTPUT: Return ONLY valid JSON matching this exact schema:
     "uniqueness": <0-10>,
     "quality": <0-10>
   },
-  "incident_type": "pursuit|dui|domestic|welfare_check|theft|shooting|use_of_force|fraud|assault|missing_person|unknown",
-  "risk_flags": ["minors", "doxxing_risk", "graphic_injury", "sexual_violence", "extreme_gore"],
+  "incident_type": "pursuit|dui|domestic|welfare_check|theft|shooting|use_of_force|fraud|assault|missing_person|CSA|trafficking|homicide|unknown",
+  "risk_flags": [],
   "needs_transcript": <true|false>,
   "needs_artifact_hunt": <true|false>,
-  "artifact_hints": ["bodycam", "dashcam", "court", "affidavit", "surveillance", "911_audio", "FOIA"],
-  "shorts_moments": [
-    {"start_sec": <number>, "end_sec": <number>, "why": "<brief reason>"}
-  ],
-  "facts_to_verify": ["<claim 1>", "<claim 2>"]
+  "artifact_hints": ["bodycam","dashcam","court","affidavit","surveillance","911_audio","FOIA"],
+  "shorts_moments": [],
+  "facts_to_verify": ["<claim 1>","<claim 2>"]
 }
 
-Be strict on KILL — only truly off-topic, non-case, or policy-risky items.
-Be generous on PASS — if the CASE is compelling, PASS it even if artifacts are unknown.
+Important:
+  * anchors_present must contain only anchor ids actually found (A1–A5)
+  * followup_vectors is REQUIRED (non-empty) for PASS and MAYBE
+  * missing_anchor is REQUIRED for MAYBE (exactly one item, e.g. "A2")
+  * model_score must reflect genuine narrative quality — do NOT assign 0 to all KILLs
+  * sensitivity_type is null unless sensitivity_review is true
 """
+
+# Valid anchor IDs for validation
+VALID_ANCHORS = {"A1", "A2", "A3", "A4", "A5"}
+
+# Valid follow-up vector types
+VALID_FOLLOWUP = {
+    "court_docket", "charging_docs", "affidavit", "bodycam", "interrogation",
+    "dashcam", "surveillance", "911_audio", "press_conference", "civil_suit",
+}
 
 
 def build_triage_user_prompt(candidate: dict) -> str:
@@ -133,7 +186,6 @@ def parse_triage_response(raw: str) -> dict | None:
     """Parse the LLM's JSON response, handling markdown code blocks."""
     text = raw.strip()
     if "```" in text:
-        # Extract from code block
         if "```json" in text:
             text = text.split("```json")[-1].split("```")[0].strip()
         else:
@@ -145,29 +197,94 @@ def parse_triage_response(raw: str) -> dict | None:
         return None
 
     # Validate required fields
-    if "status" not in data or "score" not in data:
-        return None
+    if "status" not in data or "model_score" not in data:
+        # Fallback: accept "score" if "model_score" missing
+        if "score" in data and "model_score" not in data:
+            data["model_score"] = data["score"]
+        elif "model_score" not in data:
+            return None
 
     # Normalize status
     data["status"] = data["status"].upper()
     if data["status"] not in ("PASS", "MAYBE", "KILL"):
         data["status"] = "MAYBE"
 
-    # Ensure score is int
-    data["score"] = int(data.get("score", 0))
+    # Ensure model_score is int
+    data["model_score"] = int(data.get("model_score", 0))
+
+    # Keep "score" in sync for DB compatibility (update_triage uses "score")
+    data["score"] = data["model_score"]
+
+    # Ensure anchors_present is a valid list
+    raw_anchors = data.get("anchors_present", [])
+    if isinstance(raw_anchors, list):
+        data["anchors_present"] = [a for a in raw_anchors if a in VALID_ANCHORS]
+    else:
+        data["anchors_present"] = []
 
     # Ensure patterns exist
     if "patterns" not in data:
         data["patterns"] = {}
 
-    # Ensure new routing fields default to false
+    # Ensure routing fields
     data.setdefault("needs_transcript", False)
     data.setdefault("needs_artifact_hunt", False)
     data.setdefault("artifact_hints", [])
-    data.setdefault("case_score", data["score"])
-    data.setdefault("artifact_score", 0)
+
+    # Ensure sensitivity fields
+    data.setdefault("sensitivity_review", False)
+    data.setdefault("sensitivity_type", None)
+
+    # Ensure follow-up fields
+    data.setdefault("followup_vectors", [])
+    data.setdefault("missing_anchor", None)
+    data.setdefault("why_complete_or_missing", "")
 
     return data
+
+
+def apply_threshold_decision(data: dict, thresholds: dict) -> str:
+    """Apply threshold-based decision logic using model_score + anchor count.
+
+    This is the authoritative decision function — overrides whatever the LLM
+    chose as "status" to ensure consistency with our operating-point config.
+
+    Thresholds (from policy.yaml):
+        pass_score:   minimum model_score for PASS (default 70)
+        pass_anchors: minimum anchors for PASS (default 2)
+        pass_strong_anchors: anchor count that lowers score requirement (default 3)
+        pass_strong_score: lower score threshold when anchors are strong (default 60)
+        maybe_score:  minimum model_score for MAYBE (default 55)
+        maybe_anchors: minimum anchors for MAYBE (default 1)
+    """
+    score = data["model_score"]
+    n_anchors = len(data.get("anchors_present", []))
+
+    pass_score = thresholds.get("pass_score", 70)
+    pass_anchors = thresholds.get("pass_anchors", 2)
+    pass_strong_anchors = thresholds.get("pass_strong_anchors", 3)
+    pass_strong_score = thresholds.get("pass_strong_score", 60)
+    maybe_score = thresholds.get("maybe_score", 55)
+    maybe_anchors = thresholds.get("maybe_anchors", 1)
+
+    # PASS: standard path
+    if n_anchors >= pass_anchors and score >= pass_score:
+        return "PASS"
+
+    # PASS: strong-anchor path (>=3 anchors relaxes score requirement)
+    if n_anchors >= pass_strong_anchors and score >= pass_strong_score:
+        return "PASS"
+
+    # MAYBE: decent score + at least 2 anchors but below pass_score
+    if n_anchors >= pass_anchors and score >= maybe_score:
+        return "MAYBE"
+
+    # MAYBE: high score but only 1 anchor (nearly complete)
+    if n_anchors >= maybe_anchors and score >= pass_score:
+        return "MAYBE"
+
+    # KILL: everything else
+    return "KILL"
 
 
 def apply_hard_filters(candidate: dict, policy: dict) -> dict | None:
@@ -178,17 +295,21 @@ def apply_hard_filters(candidate: dict, policy: dict) -> dict | None:
     if 0 < duration < min_dur:
         return {
             "status": "KILL",
-            "score": 0,
+            "score": 15,
+            "model_score": 15,
             "reason": f"Duration {duration}s is below minimum {min_dur}s.",
             "patterns": {},
             "incident_type": "unknown",
             "risk_flags": [],
             "shorts_moments": [],
             "facts_to_verify": [],
+            "anchors_present": [],
+            "sensitivity_review": False,
+            "sensitivity_type": None,
+            "followup_vectors": [],
+            "missing_anchor": None,
         }
 
-    # No transcript + vague description: flag for transcript fetch, don't kill
-    # (The case might still be compelling based on title/context alone)
     return None
 
 
@@ -208,15 +329,26 @@ def triage(status: str = "NEW", limit: int = 200, dry_run: bool = False) -> dict
         return {"processed": 0, "pass_count": 0, "maybe_count": 0, "kill_count": 0, "errors": 0}
 
     policy = get_policy("triage") or {}
-    pass_threshold = policy.get("pass_threshold", 70)
-    maybe_threshold = policy.get("maybe_threshold", 50)
+
+    # Threshold config — tunable via policy.yaml
+    thresholds = {
+        "pass_score": policy.get("pass_score", policy.get("pass_threshold", 70)),
+        "pass_anchors": policy.get("pass_anchors", 2),
+        "pass_strong_anchors": policy.get("pass_strong_anchors", 3),
+        "pass_strong_score": policy.get("pass_strong_score", 60),
+        "maybe_score": policy.get("maybe_score", policy.get("maybe_threshold", 55)),
+        "maybe_anchors": policy.get("maybe_anchors", 1),
+    }
 
     client = get_openrouter_client()
     model = get_policy("llm", "triage_model", "openai/gpt-4o")
     temperature = get_policy("llm", "triage_temperature", 0.2)
     max_tokens = get_policy("llm", "triage_max_tokens", 1500)
 
-    stats = {"processed": 0, "pass_count": 0, "maybe_count": 0, "kill_count": 0, "errors": 0, "deduped": 0}
+    stats = {
+        "processed": 0, "pass_count": 0, "maybe_count": 0, "kill_count": 0,
+        "errors": 0, "deduped": 0, "sensitive": 0,
+    }
 
     # Deduplicate candidates by URL or normalized title+domain
     seen_keys = set()
@@ -266,29 +398,45 @@ def triage(status: str = "NEW", limit: int = 200, dry_run: bool = False) -> dict
                 stats["errors"] += 1
                 continue
 
-            # Override status based on thresholds (in case LLM is inconsistent)
-            score = triage_result["score"]
-            if score >= pass_threshold:
-                triage_result["status"] = "PASS"
-            elif score >= maybe_threshold:
-                triage_result["status"] = "MAYBE"
-            else:
-                triage_result["status"] = "KILL"
+            # ── Threshold-based decision (authoritative) ──────────
+            triage_result["status"] = apply_threshold_decision(triage_result, thresholds)
 
-            # ── v2 Artifact Routing (not blocking) ─────────────
+            # ── Artifact routing (not blocking) ───────────────────
             source_class = cand.get("source_class", "secondary")
-
-            # For secondary/discovery_only sources, flag for artifact hunt
-            # but don't block PASS — let case quality drive the decision
             if source_class in ("secondary", "discovery_only"):
                 if triage_result["status"] in ("PASS", "MAYBE"):
                     triage_result["needs_artifact_hunt"] = True
                     if source_class == "discovery_only":
                         logger.info("  Routing: discovery_only %s flagged for artifact hunt", cid)
 
+            # ── Sensitivity tracking ──────────────────────────────
+            if triage_result.get("sensitivity_review"):
+                stats["sensitive"] += 1
+                logger.info(
+                    "  Sensitive case (%s): %s — %s",
+                    triage_result.get("sensitivity_type", "?"), cid, title,
+                )
+
+            # ── Store anchor/follow-up data in patterns for DB ────
+            # Merge anchor & routing data into patterns so it persists
+            patterns = triage_result.get("patterns", {})
+            patterns["anchors_present"] = triage_result.get("anchors_present", [])
+            patterns["followup_vectors"] = triage_result.get("followup_vectors", [])
+            patterns["missing_anchor"] = triage_result.get("missing_anchor")
+            patterns["why_complete_or_missing"] = triage_result.get("why_complete_or_missing", "")
+            patterns["sensitivity_review"] = triage_result.get("sensitivity_review", False)
+            patterns["sensitivity_type"] = triage_result.get("sensitivity_type")
+            patterns["needs_transcript"] = triage_result.get("needs_transcript", False)
+            patterns["needs_artifact_hunt"] = triage_result.get("needs_artifact_hunt", False)
+            patterns["artifact_hints"] = triage_result.get("artifact_hints", [])
+            triage_result["patterns"] = patterns
+
             logger.info(
-                "  -> %s (score=%d) %s",
-                triage_result["status"], score, triage_result.get("reason", "")[:80],
+                "  -> %s (score=%d, anchors=%d) %s",
+                triage_result["status"],
+                triage_result["model_score"],
+                len(triage_result.get("anchors_present", [])),
+                triage_result.get("reason", "")[:80],
             )
 
             if dry_run:
@@ -311,9 +459,9 @@ def triage(status: str = "NEW", limit: int = 200, dry_run: bool = False) -> dict
 
     conn.close()
     logger.info(
-        "Triage complete: %d processed — PASS=%d, MAYBE=%d, KILL=%d, errors=%d",
+        "Triage complete: %d processed — PASS=%d, MAYBE=%d, KILL=%d, sensitive=%d, errors=%d",
         stats["processed"], stats["pass_count"], stats["maybe_count"],
-        stats["kill_count"], stats["errors"],
+        stats["kill_count"], stats["sensitive"], stats["errors"],
     )
     return stats
 

@@ -1,18 +1,24 @@
 # FOIA-Free Content Pipeline — Policy Configuration
 # Adjust these settings without code changes.
 
-# ─── Triage thresholds ───
+# ─── Triage thresholds (tunable — adjust to move PASS volume) ───
 triage:
+  # Score thresholds
+  pass_score: 70             # minimum model_score for PASS
+  pass_anchors: 2            # minimum completeness anchors for PASS
+  pass_strong_anchors: 3     # anchor count that relaxes score requirement
+  pass_strong_score: 60      # lower score threshold when anchors >= pass_strong_anchors
+  maybe_score: 55            # minimum model_score for MAYBE
+  maybe_anchors: 1           # minimum anchors for MAYBE
+  # Legacy aliases (used if new keys not set)
   pass_threshold: 70
-  maybe_threshold: 50
+  maybe_threshold: 55
   # Minimum video duration (seconds) to consider as longform candidate
   min_duration_sec: 60
-  # Minimum description/transcript length to avoid auto-kill
-  min_text_length: 80
   # Maximum candidates to process per triage run
   batch_size: 200
 
-# ─── Score weights (must sum to 100) ───
+# ─── Score dimensions (must sum to 100) ───
 score_weights:
   hook_clarity: 25
   escalation: 25
@@ -21,17 +27,17 @@ score_weights:
   quality: 10
   uniqueness: 10
 
-# ─── Viral pattern minimum ───
-# A candidate needs >= this many patterns (out of 5) to pass triage
-# unless extremely strong in 1-2 categories
-viral_pattern_min: 3
-
-# ─── Risk categories that trigger auto-KILL ───
-auto_kill_risks:
-  - minors_sensitive       # minors in sensitive or violent contexts
-  - explicit_sexual_violence
-  - extreme_gore
-  - doxxing_content        # contains addresses, SSNs, private info prominently
+# ─── Sensitive case routing (NOT auto-kill) ───
+# Sensitive categories are routed with flags, not blocked.
+# See triage_llm.py for sensitivity_review / sensitivity_type handling.
+sensitivity_routing:
+  enabled: true
+  types:
+    - minors
+    - CSA
+    - trafficking
+    - sexual_violence
+    - graphic_violence
 
 # ─── Redaction / blur rules ───
 redaction:
@@ -109,14 +115,10 @@ llm:
   # Max tokens for narration
   narration_max_tokens: 4000
 
-# ─── v2: Two-lane pipeline gating ───
-artifact_gating:
-  # PASS requires at least one primary artifact found
-  pass_requires_primary_artifact: true
-  # Secondary sources capped at this score (forced MAYBE if no artifact)
-  secondary_pass_cap_score: 65
-  # Discovery-only sources can never PASS directly
-  discovery_only_never_pass: true
+# ─── v2: Artifact hunting config (routing, not gating) ───
+# PASS is no longer blocked by missing artifacts — triage sets
+# needs_artifact_hunt=true and downstream hunts for them.
+artifact_hunting:
   # Minimum confidence for an artifact to count as "found"
   artifact_min_confidence: 0.7
   # Hook score threshold for leads to enter artifact hunt
