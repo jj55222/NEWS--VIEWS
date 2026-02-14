@@ -2,7 +2,8 @@
 """Ingest candidates from RSS feeds listed in sources_registry.json.
 
 Reads enabled RSS sources, fetches recent entries, and writes NEW
-candidates to the pipeline database.
+candidates to the pipeline database.  Includes source-health tracking
+(auto-disable after consecutive bozo feeds) and routing metadata.
 
 Usage:
     python -m scripts.ingest_rss                    # all enabled RSS feeds
@@ -19,11 +20,26 @@ import sys
 from datetime import datetime, timedelta, timezone
 
 import feedparser
+import requests
 
 from scripts.config_loader import get_enabled_sources, setup_logging
 from scripts.db import get_connection, init_db, insert_candidate
+from scripts.source_health import is_source_ok, record_bozo, record_success
 
 logger = setup_logging("ingest_rss")
+
+# Browser-like headers so RSS fetches aren't blocked by WAFs
+_RSS_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/131.0.0.0 Safari/537.36"
+    ),
+    "Accept": "application/rss+xml, application/xml, text/xml, */*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Connection": "keep-alive",
+}
 
 
 def _parse_rss_date(date_str: str | None) -> str | None:
@@ -54,12 +70,28 @@ def make_candidate_id(source_id: str, entry_link: str) -> str:
 
 
 def fetch_rss_entries(feed_url: str, days: int = 7) -> list[dict]:
-    """Fetch and parse RSS entries from a feed URL."""
+    """Fetch and parse RSS entries from a feed URL.
+
+    Tries requests with browser headers first (bypasses simple WAFs),
+    then falls back to feedparser's built-in fetcher.
+    """
+    feed = None
+
+    # Tier 1: fetch XML with browser headers, then parse
     try:
-        feed = feedparser.parse(feed_url)
-    except Exception as exc:
-        logger.error("Failed to parse feed %s: %s", feed_url, exc)
-        return []
+        resp = requests.get(feed_url, headers=_RSS_HEADERS, timeout=30)
+        resp.raise_for_status()
+        feed = feedparser.parse(resp.content)
+    except requests.RequestException as exc:
+        logger.debug("requests fetch failed for %s (%s), falling back to feedparser", feed_url, exc)
+
+    # Tier 2: plain feedparser (its own User-Agent)
+    if feed is None or (feed.bozo and not feed.entries):
+        try:
+            feed = feedparser.parse(feed_url)
+        except Exception as exc:
+            logger.error("Failed to parse feed %s: %s", feed_url, exc)
+            return []
 
     if feed.bozo and not feed.entries:
         logger.warning("Feed returned no entries (bozo): %s", feed_url)
@@ -100,13 +132,20 @@ def ingest(days: int = 7, limit: int | None = None, dry_run: bool = False) -> di
     """Run the RSS ingestion pipeline.
 
     Returns:
-        dict with keys: feeds_processed, entries_found, candidates_inserted, errors
+        dict with keys: feeds_processed, entries_found, candidates_inserted,
+                        skipped_unhealthy, errors
     """
     sources = get_enabled_sources(source_type="rss")
     if limit:
         sources = sources[:limit]
 
-    stats = {"feeds_processed": 0, "entries_found": 0, "candidates_inserted": 0, "errors": 0}
+    stats = {
+        "feeds_processed": 0,
+        "entries_found": 0,
+        "candidates_inserted": 0,
+        "skipped_unhealthy": 0,
+        "errors": 0,
+    }
 
     conn = None
     if not dry_run:
@@ -116,6 +155,14 @@ def ingest(days: int = 7, limit: int | None = None, dry_run: bool = False) -> di
     for src in sources:
         source_id = src["source_id"]
         feed_url = src["url"]
+
+        # ── Health gate ──────────────────────────────────────────
+        ok, reason = is_source_ok(source_id)
+        if not ok:
+            logger.info("Skipping %s — %s", source_id, reason)
+            stats["skipped_unhealthy"] += 1
+            continue
+
         logger.info("Processing RSS feed: %s (%s)", src["name"], source_id)
 
         try:
@@ -125,19 +172,38 @@ def ingest(days: int = 7, limit: int | None = None, dry_run: bool = False) -> di
             stats["errors"] += 1
             continue
 
+        # ── Health bookkeeping ───────────────────────────────────
+        if not entries:
+            disabled = record_bozo(source_id, reason="empty_feed")
+            if disabled:
+                logger.warning("Auto-disabled %s after consecutive empty feeds", source_id)
+            stats["feeds_processed"] += 1
+            continue
+        else:
+            record_success(source_id)
+
         stats["feeds_processed"] += 1
         stats["entries_found"] += len(entries)
+
+        # Routing metadata from the registry entry
+        src_class = src.get("source_class", "secondary")
+        routing_meta = {
+            "source_type": "rss",
+            "next_actions_hint": ["TRIAGE"],
+        }
 
         for entry in entries:
             cid = make_candidate_id(source_id, entry["link"])
             candidate = {
                 "candidate_id": cid,
                 "source_id": source_id,
+                "source_class": src_class,
                 "url": entry["link"],
                 "platform": "rss",
                 "published_at": entry["published_at"],
                 "title": entry["title"],
                 "description": entry["description"],
+                "quality_signals_json": routing_meta,
             }
 
             if dry_run:
@@ -151,9 +217,9 @@ def ingest(days: int = 7, limit: int | None = None, dry_run: bool = False) -> di
         conn.close()
 
     logger.info(
-        "RSS ingest complete: %d feeds, %d entries, %d inserted, %d errors",
+        "RSS ingest complete: %d feeds, %d entries, %d inserted, %d skipped, %d errors",
         stats["feeds_processed"], stats["entries_found"],
-        stats["candidates_inserted"], stats["errors"],
+        stats["candidates_inserted"], stats["skipped_unhealthy"], stats["errors"],
     )
     return stats
 
