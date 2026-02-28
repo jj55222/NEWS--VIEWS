@@ -21,7 +21,7 @@ import re
 import json
 import time
 import argparse
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from dotenv import load_dotenv
@@ -245,20 +245,38 @@ def assess_multi_source(video_id: str, case_details: dict) -> int:
     return len(artifact_types)
 
 
-def assess_case_documentation(defendant: str, jurisdiction: str) -> str:
+def assess_case_documentation(defendant: str, jurisdiction: str,
+                              video_title: str = "") -> str:
     """
     Search for court records and case documentation.
 
+    Requires a full name (first + last) to search meaningfully.
+    Falls back to video title search if defendant name is too generic.
+
     Returns: "full" | "partial" | "news_only" | "none"
     """
-    if not defendant:
+    has_full_name = defendant and " " in defendant.strip()
+
+    # If no usable name and no title, we can't search
+    if not defendant and not video_title:
+        return "none"
+
+    # Build search query — use full name if available, else title keywords
+    if has_full_name:
+        search_name = defendant
+    elif defendant and video_title:
+        # First name only — combine with title for context
+        search_name = f"{defendant} {video_title}"
+    elif video_title:
+        search_name = video_title
+    else:
         return "none"
 
     found_court = False
     found_news = False
 
-    # Try PACER/CourtListener search
-    if EXA_API_KEY:
+    # Try PACER/CourtListener search (only with full names — first-name-only hits noise)
+    if EXA_API_KEY and has_full_name:
         try:
             from artifact_hunter import search_pacer
             from exa_pipeline import get_exa_client
@@ -274,17 +292,26 @@ def assess_case_documentation(defendant: str, jurisdiction: str) -> str:
         try:
             from exa_pipeline import get_exa_client
             exa = get_exa_client()
+            query = f"{search_name} {jurisdiction} charged arrested".strip()
             results = exa.search(
-                query=f"{defendant} {jurisdiction} charged arrested",
+                query=query,
                 num_results=5,
             )
             if results.results:
-                found_news = True
+                # Verify relevance — check that at least one result title contains
+                # part of the defendant name or a keyword from our query
+                for r in results.results:
+                    title = getattr(r, "title", "").lower()
+                    if (has_full_name and defendant.lower().split()[-1] in title) or \
+                       any(kw in title for kw in ["arrest", "charge", "murder", "assault",
+                                                   "shooting", "bodycam", "police"]):
+                        found_news = True
+                        break
         except Exception:
             pass
 
     if found_court:
-        return "partial"  # We found court records but not necessarily "full"
+        return "partial"
     elif found_news:
         return "news_only"
     return "none"
@@ -348,26 +375,80 @@ Return ONLY one word from the options above, nothing else."""
         return "routine"
 
 
-def assess_legal_stage(case_details: dict) -> str:
+def assess_legal_stage(case_details: dict, transcript: str = "",
+                       video_description: str = "") -> str:
     """
     Determine the legal stage of the case.
 
+    Checks multiple text sources (summary, description, transcript) for legal
+    keywords. Falls back to LLM if keyword matching is inconclusive.
+
     Returns: "sentenced" | "convicted" | "trial_done" | "trial_active" | "pre_trial" | "investigation"
     """
+    # Combine all available text for keyword matching
     summary = case_details.get("case_summary", "").lower()
-    crime_type = case_details.get("crime_type", "").lower()
+    desc = video_description.lower() if video_description else ""
+    # Only check start/end of transcript where legal outcomes are typically mentioned
+    transcript_bookends = ""
+    if transcript:
+        transcript_bookends = (transcript[:3000] + " " + transcript[-3000:]).lower()
+    combined = f"{summary} {desc} {transcript_bookends}"
 
-    # Check keywords in summary
-    if any(kw in summary for kw in ["sentenced to", "serving", "life sentence", "death row"]):
+    # Keyword matching against combined text
+    if any(kw in combined for kw in ["sentenced to", "serving", "life sentence",
+                                      "death row", "years in prison", "sentenced him",
+                                      "sentenced her", "got sentenced", "prison sentence"]):
         return "sentenced"
-    if any(kw in summary for kw in ["found guilty", "convicted of", "guilty verdict"]):
+    if any(kw in combined for kw in ["found guilty", "convicted of", "guilty verdict",
+                                      "was convicted", "conviction"]):
         return "convicted"
-    if any(kw in summary for kw in ["trial concluded", "verdict", "jury found"]):
+    if any(kw in combined for kw in ["trial concluded", "verdict was", "jury found",
+                                      "found not guilty", "acquitted"]):
         return "trial_done"
-    if any(kw in summary for kw in ["trial", "testif", "jury deliberat"]):
+    if any(kw in combined for kw in ["on trial", "during trial", "testif",
+                                      "jury deliberat", "trial underway"]):
         return "trial_active"
-    if any(kw in summary for kw in ["charged with", "indicted", "arraign", "plea"]):
+    if any(kw in combined for kw in ["charged with", "indicted", "arraign", "plea deal",
+                                      "plea agreement", "pled guilty", "pleaded guilty",
+                                      "faces charges", "facing charges", "was charged",
+                                      "has been charged", "arrested and charged"]):
         return "pre_trial"
+    if any(kw in combined for kw in ["arrested", "taken into custody", "placed under arrest",
+                                      "you're under arrest", "booking", "was arrested"]):
+        return "pre_trial"
+
+    # If keyword matching found nothing, try LLM on the video description
+    # (cheaper than sending full transcript)
+    if OPENROUTER_API_KEY and (desc or summary):
+        try:
+            from openai import OpenAI
+            client = OpenAI(
+                base_url="https://openrouter.ai/api/v1",
+                api_key=OPENROUTER_API_KEY,
+            )
+            probe_text = f"Title: {case_details.get('case_summary', '')}\nDescription: {video_description[:2000] if video_description else 'N/A'}"
+            response = client.chat.completions.create(
+                model=OPENROUTER_MODEL,
+                messages=[{"role": "user", "content": f"""What is the legal stage of this case? Based on the info below, return ONLY one of these words:
+- sentenced (person received a prison sentence)
+- convicted (found guilty but sentencing not mentioned)
+- trial_done (trial concluded with verdict)
+- trial_active (trial is underway)
+- pre_trial (person has been charged/arrested but no trial yet)
+- investigation (no charges filed, still under investigation)
+
+{probe_text}
+
+Return ONLY one word:"""}],
+                temperature=0.0,
+                max_tokens=15,
+            )
+            answer = response.choices[0].message.content.strip().lower().strip('"\'.')
+            valid = {"sentenced", "convicted", "trial_done", "trial_active", "pre_trial", "investigation"}
+            if answer in valid:
+                return answer
+        except Exception:
+            pass
 
     return "investigation"  # Default
 
@@ -391,26 +472,51 @@ def assess_public_interest(video_id: str, metadata: dict, case_details: dict) ->
         return "minimal"
 
 
-def assess_uniqueness(case_details: dict) -> str:
+def assess_uniqueness(case_details: dict, video_title: str = "") -> str:
     """
     Check if major true crime channels have already covered this case.
 
+    Handles first-name-only defendants by using video title keywords instead.
     Returns: "uncovered" | "lightly" | "moderate_new_angle" | "heavily_covered"
     """
     defendant = ""
     if case_details.get("defendant_names"):
         defendant = case_details["defendant_names"][0]
 
-    if not defendant or not YOUTUBE_API_KEY:
-        return "uncovered"  # Assume uncovered if we can't check
+    if not YOUTUBE_API_KEY:
+        return "uncovered"
 
     try:
         from bodycam_sources import youtube_search
     except ImportError:
         return "uncovered"
 
-    # Search for defendant in YouTube
-    results = youtube_search(f'"{defendant}" true crime case', max_results=10)
+    # Determine search quality — first-name-only is unreliable
+    has_full_name = defendant and " " in defendant.strip()
+
+    if has_full_name:
+        # Full name: search with quotes
+        search_query = f'"{defendant}" case'
+        match_term = defendant.lower()
+    elif defendant and video_title:
+        # First name only: use title keywords + name for a more targeted search
+        # Strip common BWC title prefixes to get the case description
+        title_clean = re.sub(
+            r'(?i)^(bodycam|body cam|bwc|police|cop|officer)\s*[-:]\s*', '', video_title
+        ).strip()
+        search_query = f'{title_clean} {defendant}'
+        match_term = defendant.lower()
+    elif video_title:
+        # No defendant at all: search by title
+        title_clean = re.sub(
+            r'(?i)^(bodycam|body cam|bwc|police|cop|officer)\s*[-:]\s*', '', video_title
+        ).strip()
+        search_query = f'{title_clean} true crime'
+        match_term = ""
+    else:
+        return "uncovered"
+
+    results = youtube_search(search_query, max_results=10)
 
     # Check for major channels
     try:
@@ -429,8 +535,13 @@ def assess_uniqueness(case_details: dict) -> str:
         channel = r.get("channel", "").lower()
         title = r.get("title", "").lower()
 
-        # Check if this result is actually about our defendant
-        if defendant.lower() not in title:
+        # If we have a match term, verify the result is about our case
+        if match_term and match_term not in title:
+            continue
+
+        # Skip results from the same channel (the source video itself)
+        source_channel = case_details.get("channel_name", "").lower() if isinstance(case_details.get("channel_name"), str) else ""
+        if source_channel and source_channel in channel:
             continue
 
         total_coverage += 1
@@ -446,22 +557,65 @@ def assess_uniqueness(case_details: dict) -> str:
     return "uncovered"
 
 
-def assess_jurisdiction_type(state: str) -> str:
+def assess_jurisdiction_type(state: str, case_details: dict = None,
+                            video_description: str = "",
+                            channel_name: str = "") -> str:
     """
     Classify jurisdiction strength for FOIA/records access.
 
+    If state is unknown, attempts to infer it from agencies_mentioned,
+    video description, and channel name.
+
     Returns: "sunshine" | "good_foia" | "limited" | "restricted"
     """
-    if not state:
+    # If we have a known state, use it directly
+    if state:
+        state_upper = state.upper()
+        if state_upper in STRONG_SUNSHINE_STATES:
+            return "sunshine"
+        elif state_upper in SUNSHINE_STATES:
+            return "good_foia"
+        else:
+            return "limited"
+
+    # State unknown — try to infer from available context
+    context_texts = []
+    if case_details:
+        context_texts.append(case_details.get("jurisdiction", "").lower())
+        for agency in case_details.get("agencies_mentioned", []):
+            context_texts.append(agency.lower())
+    if video_description:
+        context_texts.append(video_description[:2000].lower())
+    if channel_name:
+        context_texts.append(channel_name.lower())
+    combined = " ".join(context_texts)
+
+    if not combined.strip():
         return "limited"
 
-    state_upper = state.upper()
-    if state_upper in STRONG_SUNSHINE_STATES:
-        return "sunshine"
-    elif state_upper in SUNSHINE_STATES:
-        return "good_foia"
-    else:
-        return "limited"
+    # Map state keywords to codes
+    state_hints = {
+        "FL": ["florida", "miami", "tampa", "orlando", "jacksonville", "broward",
+               "pinellas", "palm beach", "hillsborough", "fhp", "florida highway patrol"],
+        "TX": ["texas", "houston", "dallas", "san antonio", "austin", "fort worth",
+               "harris county", "bexar county", "tarrant county"],
+        "AZ": ["arizona", "phoenix", "tucson", "mesa", "maricopa", "scottsdale",
+               "chandler", "tempe", "arizona dps"],
+        "CA": ["california", "los angeles", "lapd", "san francisco", "sfpd",
+               "sacramento", "san diego", "oakland", "chp"],
+        "WA": ["washington", "seattle", "spd", "tacoma", "king county"],
+        "CO": ["colorado", "denver", "aurora", "colorado springs"],
+    }
+
+    for state_code, keywords in state_hints.items():
+        if any(kw in combined for kw in keywords):
+            if state_code in STRONG_SUNSHINE_STATES:
+                return "sunshine"
+            elif state_code in SUNSHINE_STATES:
+                return "good_foia"
+            return "limited"
+
+    return "limited"
 
 
 # =============================================================================
@@ -504,7 +658,12 @@ def score_incident(video_id: str) -> dict:
         if segments:
             transcript = full_text
             print(f"  Transcript: {len(transcript):,} characters")
-            case_details_obj = extract_case_details_with_llm(transcript, metadata["title"])
+            case_details_obj = extract_case_details_with_llm(
+                transcript,
+                video_title=metadata["title"],
+                video_description=metadata.get("description", ""),
+                channel_name=metadata.get("channel_title", ""),
+            )
             # Convert dataclass to dict
             if hasattr(case_details_obj, '__dict__'):
                 from dataclasses import asdict
@@ -515,6 +674,8 @@ def score_incident(video_id: str) -> dict:
             print(f"  Crime: {case_details.get('crime_type', 'Unknown')}")
             print(f"  Jurisdiction: {case_details.get('jurisdiction', 'Unknown')}")
             print(f"  State: {case_details.get('state', 'Unknown')}")
+            if case_details.get('agencies_mentioned'):
+                print(f"  Agencies: {', '.join(case_details['agencies_mentioned'])}")
         else:
             print(f"  No transcript available: {full_text}")
     except Exception as e:
@@ -532,7 +693,10 @@ def score_incident(video_id: str) -> dict:
     print("\n[5/8] Checking case documentation...")
     defendant = case_details.get("defendant_names", [""])[0] if case_details.get("defendant_names") else ""
     jurisdiction = case_details.get("jurisdiction", "")
-    case_docs = assess_case_documentation(defendant, jurisdiction)
+    case_docs = assess_case_documentation(
+        defendant, jurisdiction,
+        video_title=metadata.get("title", ""),
+    )
     print(f"  Case docs: {case_docs}")
 
     print("\n[6/8] Assessing narrative potential...")
@@ -540,17 +704,26 @@ def score_incident(video_id: str) -> dict:
     print(f"  Narrative: {narrative}")
 
     print("\n[7/8] Determining legal stage...")
-    legal_stage = assess_legal_stage(case_details)
+    legal_stage = assess_legal_stage(
+        case_details,
+        transcript=transcript,
+        video_description=metadata.get("description", ""),
+    )
     print(f"  Legal stage: {legal_stage}")
 
     public_interest = assess_public_interest(video_id, metadata, case_details)
     print(f"  Public interest: {public_interest}")
 
     print("\n[8/8] Checking uniqueness...")
-    uniqueness = assess_uniqueness(case_details)
+    uniqueness = assess_uniqueness(case_details, video_title=metadata.get("title", ""))
     print(f"  Uniqueness: {uniqueness}")
 
-    jurisdiction_type = assess_jurisdiction_type(case_details.get("state", ""))
+    jurisdiction_type = assess_jurisdiction_type(
+        case_details.get("state", ""),
+        case_details=case_details,
+        video_description=metadata.get("description", ""),
+        channel_name=metadata.get("channel_title", ""),
+    )
     print(f"  Jurisdiction strength: {jurisdiction_type}")
 
     # Score
@@ -573,7 +746,7 @@ def score_incident(video_id: str) -> dict:
         "video_title": metadata.get("title", ""),
         "channel_id": metadata.get("channel_id", ""),
         "channel_name": metadata.get("channel_title", ""),
-        "scored_at": datetime.utcnow().isoformat() + "Z",
+        "scored_at": datetime.now(timezone.utc).isoformat() + "Z",
         "score": score_result["total_score"],
         "classification": score_result["classification"],
         "action": score_result["action"],
@@ -615,7 +788,7 @@ def scan_channel_recent(channel_id: str, since_days: int = 7) -> List[dict]:
     if not videos:
         return []
 
-    cutoff = datetime.utcnow() - timedelta(days=since_days)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=since_days)
     recent = []
     for v in videos:
         pub = v.get("published_at", "")
@@ -677,7 +850,7 @@ def batch_score(channel_ids: List[str] = None, since_days: int = 7,
                 if scored_at:
                     try:
                         dt = datetime.fromisoformat(scored_at.replace("Z", "+00:00"))
-                        if datetime.utcnow().replace(tzinfo=dt.tzinfo) - dt < timedelta(days=7):
+                        if datetime.now(timezone.utc).replace(tzinfo=dt.tzinfo) - dt < timedelta(days=7):
                             print(f"  SKIP {vid} (scored within 7 days)")
                             continue
                     except (ValueError, TypeError):

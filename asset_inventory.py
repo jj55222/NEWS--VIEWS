@@ -21,7 +21,7 @@ import os
 import json
 import time
 import argparse
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 from dataclasses import asdict
@@ -253,7 +253,7 @@ def build_inventory(video_id: str, use_exa: bool = False) -> dict:
         "video_id": video_id,
         "video_title": scored.get("video_title", "") if scored else "",
         "channel_name": scored.get("channel_name", "") if scored else "",
-        "built_at": datetime.utcnow().isoformat() + "Z",
+        "built_at": datetime.now(timezone.utc).isoformat() + "Z",
         "case": {
             "defendant": defendant,
             "jurisdiction": jurisdiction,

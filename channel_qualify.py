@@ -23,7 +23,7 @@ import re
 import json
 import time
 import argparse
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from dotenv import load_dotenv
@@ -455,7 +455,7 @@ def qualify_channel(channel_id: str) -> dict:
         "channel_url": f"https://www.youtube.com/channel/{channel_id}",
         "subscriber_count": details["subscriber_count"],
         "total_videos": details["total_videos"],
-        "last_evaluated": datetime.utcnow().isoformat() + "Z",
+        "last_evaluated": datetime.now(timezone.utc).isoformat() + "Z",
         "score": score_result["total_score"],
         "score_without_watermark": score_result["total_score"],
         "classification": score_result["classification"],
@@ -512,7 +512,7 @@ def set_watermark(channel_id: str, level: str) -> bool:
     entry["action"] = score_result["action"]
     entry["score_breakdown"] = {b["name"]: b["awarded"] for b in score_result["breakdown"]}
     entry["notes"] = f"Watermark assessed: {level}. Full score."
-    entry["last_evaluated"] = datetime.utcnow().isoformat() + "Z"
+    entry["last_evaluated"] = datetime.now(timezone.utc).isoformat() + "Z"
 
     save_registry(registry)
 
@@ -658,7 +658,7 @@ def run_seed():
                 "channel_url": f"https://www.youtube.com/channel/{ch_id}",
                 "subscriber_count": 0,
                 "total_videos": 0,
-                "last_evaluated": datetime.utcnow().isoformat() + "Z",
+                "last_evaluated": datetime.now(timezone.utc).isoformat() + "Z",
                 "score": 0,
                 "classification": "PENDING",
                 "action": "Re-run when API is available",

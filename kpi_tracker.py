@@ -14,7 +14,7 @@ Usage:
 
 import json
 import argparse
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 from dotenv import load_dotenv
@@ -53,7 +53,7 @@ def log_run(run_type: str, metrics: dict, errors: list = None, notes: str = ""):
         notes: Optional notes about the run
     """
     entry = {
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
         "run_type": run_type,
         "metrics": metrics,
         "errors": errors or [],
@@ -72,7 +72,7 @@ def get_runs(since_days: int = 7) -> List[dict]:
     if not RUN_LOG_PATH.exists():
         return []
 
-    cutoff = datetime.utcnow() - timedelta(days=since_days)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=since_days)
     runs = []
 
     with open(RUN_LOG_PATH, "r") as f:
@@ -107,8 +107,8 @@ def get_weekly_summary(weeks_back: int = 1) -> dict:
 
     if not runs:
         return {
-            "week_start": (datetime.utcnow() - timedelta(days=7)).strftime("%Y-%m-%d"),
-            "week_end": datetime.utcnow().strftime("%Y-%m-%d"),
+            "week_start": (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%d"),
+            "week_end": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
             "run_count": 0,
             "kpis": {},
         }
@@ -147,8 +147,8 @@ def get_weekly_summary(weeks_back: int = 1) -> dict:
             kpis[kpi_name] = aggregated.get(kpi_name, 0)
 
     return {
-        "week_start": (datetime.utcnow() - timedelta(days=7)).strftime("%Y-%m-%d"),
-        "week_end": datetime.utcnow().strftime("%Y-%m-%d"),
+        "week_start": (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%d"),
+        "week_end": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
         "run_count": len(runs),
         "kpis": kpis,
     }

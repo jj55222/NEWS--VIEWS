@@ -364,8 +364,15 @@ def _timestamp_to_seconds(timestamp: str) -> float:
     return 0
 
 
-def extract_case_details_with_llm(transcript: str, video_title: str = "") -> CaseDetails:
-    """Use LLM to extract structured case details from transcript."""
+def extract_case_details_with_llm(transcript: str, video_title: str = "",
+                                  video_description: str = "",
+                                  channel_name: str = "") -> CaseDetails:
+    """
+    Use LLM to extract structured case details from transcript.
+
+    Accepts optional video_description and channel_name for additional context
+    (BWC transcripts alone often lack jurisdiction/full name info).
+    """
     if not OPENAI_AVAILABLE or not OPENROUTER_API_KEY:
         print("[WARN] LLM not available, using basic extraction")
         return extract_case_details_basic(transcript)
@@ -380,33 +387,64 @@ def extract_case_details_with_llm(transcript: str, video_title: str = "") -> Cas
     if len(transcript) > max_chars:
         transcript = transcript[:max_chars] + "... [truncated]"
 
-    prompt = f"""Analyze this true crime video transcript and extract case details.
+    # Build context block from all available metadata
+    context_parts = [f"VIDEO TITLE: {video_title}"]
+    if channel_name:
+        context_parts.append(f"YOUTUBE CHANNEL: {channel_name}")
+    if video_description:
+        # Truncate long descriptions
+        desc = video_description[:3000] if len(video_description) > 3000 else video_description
+        context_parts.append(f"VIDEO DESCRIPTION:\n{desc}")
+    context_block = "\n".join(context_parts)
 
-VIDEO TITLE: {video_title}
+    prompt = f"""You are analyzing body-worn camera (BWC) / police bodycam footage from YouTube.
+The transcript below is auto-generated from audio — it contains officer dialogue, dispatch radio,
+and conversations with subjects. It is NOT a narrated true crime video.
+
+{context_block}
 
 TRANSCRIPT:
 {transcript}
 
-Extract the following in JSON format:
+Your task: extract structured case details. Follow these rules carefully:
+
+NAMES:
+- Extract FULL names (first + last) of suspects/subjects and victims.
+- Listen for officers addressing people, dispatch giving names, or names in radio calls.
+- If only a first name is spoken, still look for last names in the video title, description,
+  dispatch audio, or officer references like "Mr./Mrs. [Last]".
+- If you truly cannot find a last name, return the first name only — do NOT guess.
+
+JURISDICTION:
+- Identify the police department, sheriff's office, or agency from:
+  (a) officer uniforms/badges mentioned, (b) dispatch call signs, (c) agency names spoken,
+  (d) the YouTube channel name, (e) the video description, (f) city/county references in dialogue.
+- Return the city/county AND state. Example: "Jacksonville, FL" not just "Florida".
+
+LEGAL OUTCOME:
+- Check if the video description or transcript mentions charges, arrest, conviction, sentencing.
+- Include any legal outcome in the case_summary field.
+
+Return ONLY valid JSON:
 {{
-    "defendant_names": ["list of defendant/suspect names"],
-    "victim_names": ["list of victim names"],
-    "jurisdiction": "city and state where crime occurred",
-    "state": "2-letter state code (e.g., FL, TX)",
-    "incident_year": "year the crime occurred",
-    "crime_type": "murder, assault, kidnapping, etc.",
-    "case_summary": "1-2 sentence summary",
-    "agencies_mentioned": ["police departments, sheriff offices mentioned"]
+    "defendant_names": ["Full Name 1", "Full Name 2"],
+    "victim_names": ["Full Name"],
+    "jurisdiction": "City, State (e.g., Jacksonville, FL)",
+    "state": "2-letter state code (e.g., FL, TX, AZ)",
+    "incident_year": "year (from description, publish date, or dialogue)",
+    "crime_type": "the offense: murder, DUI, domestic violence, assault, etc.",
+    "case_summary": "2-3 sentences: what happened, who was involved, legal outcome if known",
+    "agencies_mentioned": ["Jacksonville Sheriff's Office", "Florida Highway Patrol"]
 }}
 
-Return ONLY valid JSON, no other text."""
+JSON only, no other text:"""
 
     try:
         response = client.chat.completions.create(
             model=OPENROUTER_MODEL,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.1,
-            max_tokens=1000,
+            max_tokens=1500,
         )
 
         content = response.choices[0].message.content.strip()
