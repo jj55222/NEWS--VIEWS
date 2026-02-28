@@ -10,6 +10,7 @@ auto-discovery. Use --set-watermark to record the manual assessment.
 
 Usage:
     python channel_qualify.py --check              # Verify API credentials
+    python channel_qualify.py --seed               # Build registry from your channels + videos
     python channel_qualify.py --discover           # Auto-discover + score channels
     python channel_qualify.py --score CHANNEL_ID   # Score a single channel
     python channel_qualify.py --set-watermark CHANNEL_ID none|small|moderate|heavy
@@ -523,6 +524,175 @@ def set_watermark(channel_id: str, level: str) -> bool:
 
 
 # =============================================================================
+# SEED REGISTRY (your known channels + videos)
+# =============================================================================
+
+# Individual videos — channel IDs will be resolved via YouTube API
+SEED_VIDEOS = [
+    "rykYVUNbAs0", "rK3EyLmXPzQ", "Cl_xpyMkOTQ", "SciU3RCrTe0",
+    "IZlrbGlbNjM", "-yiwunSIu6U", "c9PUhtIDVC0", "rWyXq4RdNu4",
+    "d_hWzbF6XOM", "hNwyKEDNSR0", "fBw_K0iltFI", "AHwOMhDtnDs",
+    "4htpzGlCXWw", "RXlRIXFjMCw", "89ckVvmtNNw",
+]
+
+# Explicit channels (handles + raw UC IDs)
+SEED_CHANNELS = [
+    {"handle": "JAXSHERIFF", "note": "Jacksonville Sheriff's Office", "expected_type": "official_pd"},
+    {"handle": "houstonpolice", "note": "Houston Police", "expected_type": "official_pd"},
+    {"handle": "DenverPoliceDept", "note": "Denver Police", "expected_type": "official_pd"},
+    {"handle": "AustinPolice", "note": "Austin Police", "expected_type": "official_pd"},
+    {"handle": "spdblotter", "note": "Seattle Police", "expected_type": "official_pd"},
+    {"channel_id": "UCYa23yHE2e1yJrlYUtyEM2w", "note": "use of force reports"},
+    {"channel_id": "UC2T9FKndXhkgHLk-lKOiCrQ", "note": "can be triaged"},
+    {"channel_id": "UCWu-Puzkp8hv9eSpnWkNxjA", "note": "can be triaged"},
+    {"channel_id": "UCmzeK2lzaBSAQQr2Q0hPArw", "note": "can be triaged"},
+]
+
+
+def _get_channel_from_video(video_id: str) -> dict:
+    """Resolve a video ID to its channel info via YouTube API."""
+    data = _yt_get("https://www.googleapis.com/youtube/v3/videos", {
+        "part": "snippet",
+        "id": video_id,
+    })
+    if not data or not data.get("items"):
+        return {}
+    snippet = data["items"][0].get("snippet", {})
+    return {
+        "channel_id": snippet.get("channelId", ""),
+        "channel_name": snippet.get("channelTitle", ""),
+        "video_title": snippet.get("title", ""),
+    }
+
+
+def _resolve_handle_to_id(handle: str) -> str:
+    """Resolve @handle to channel ID via YouTube search API."""
+    results = search_youtube(handle, search_type="channel", max_results=1)
+    if results:
+        return results[0].get("id", {}).get("channelId", "")
+    return ""
+
+
+def run_seed():
+    """
+    Build the registry from your known channels and videos.
+    Resolves video IDs → channel IDs, resolves @handles → channel IDs,
+    deduplicates, and creates registry entries. Then runs full qualification.
+    """
+    if not check_credentials():
+        return
+
+    print("=" * 60)
+    print("BUILDING REGISTRY FROM YOUR SEED CHANNELS + VIDEOS")
+    print("=" * 60)
+
+    channels = {}  # channel_id → {name, note, sample_videos, ...}
+
+    # 1) Resolve channels from your 15 videos
+    print(f"\n[1/3] Resolving channels from {len(SEED_VIDEOS)} videos...")
+    for i, vid in enumerate(SEED_VIDEOS):
+        print(f"  [{i+1}/{len(SEED_VIDEOS)}] Video {vid}...", end=" ")
+        info = _get_channel_from_video(vid)
+        if info and info.get("channel_id"):
+            ch_id = info["channel_id"]
+            if ch_id not in channels:
+                channels[ch_id] = {
+                    "channel_id": ch_id,
+                    "channel_name": info.get("channel_name", ""),
+                    "note": "",
+                    "sample_videos": [],
+                }
+            channels[ch_id]["sample_videos"].append(vid)
+            print(f"→ {info['channel_name']}")
+        else:
+            print("→ could not resolve (check API key)")
+
+    print(f"\n  Unique channels from videos: {len(channels)}")
+
+    # 2) Add explicit channels
+    print(f"\n[2/3] Adding {len(SEED_CHANNELS)} explicit channels...")
+    for ch in SEED_CHANNELS:
+        ch_id = ch.get("channel_id", "")
+        handle = ch.get("handle", "")
+
+        if not ch_id and handle:
+            print(f"  Resolving @{handle}...", end=" ")
+            ch_id = _resolve_handle_to_id(handle)
+            if ch_id:
+                print(f"→ {ch_id}")
+            else:
+                print("→ could not resolve")
+                continue
+
+        if ch_id and ch_id not in channels:
+            channels[ch_id] = {
+                "channel_id": ch_id,
+                "channel_name": "",
+                "note": ch.get("note", ""),
+                "sample_videos": [],
+            }
+        elif ch_id:
+            # merge note
+            existing = channels[ch_id].get("note", "")
+            new_note = ch.get("note", "")
+            if new_note and new_note not in existing:
+                channels[ch_id]["note"] = f"{existing}; {new_note}".strip("; ")
+
+    print(f"\n  Total unique channels: {len(channels)}")
+
+    # 3) Qualify each channel and save to registry
+    print(f"\n[3/3] Qualifying {len(channels)} channels...")
+    registry = load_registry()
+
+    for ch_id, ch_info in channels.items():
+        entry = qualify_channel(ch_id)
+        if entry:
+            entry["notes"] = ch_info.get("note", entry.get("notes", ""))
+            entry["discovery_source"] = "user_seed"
+            registry[ch_id] = entry
+        else:
+            # API couldn't fetch details — save placeholder
+            registry[ch_id] = {
+                "channel_id": ch_id,
+                "channel_name": ch_info.get("channel_name", ""),
+                "channel_url": f"https://www.youtube.com/channel/{ch_id}",
+                "subscriber_count": 0,
+                "total_videos": 0,
+                "last_evaluated": datetime.utcnow().isoformat() + "Z",
+                "score": 0,
+                "classification": "PENDING",
+                "action": "Re-run when API is available",
+                "score_breakdown": {},
+                "channel_data": {
+                    "raw_footage_ratio": 0.0,
+                    "watermark_level": "unknown",
+                    "uploads_per_week": 0.0,
+                    "avg_duration_minutes": 0.0,
+                    "jurisdiction_type": "unclear",
+                    "source_tier": "unknown",
+                    "description_quality": "none",
+                },
+                "needs_manual_review": True,
+                "sample_videos": ch_info.get("sample_videos", []),
+                "notes": ch_info.get("note", ""),
+                "discovery_source": "user_seed",
+            }
+        time.sleep(0.3)
+
+    save_registry(registry)
+
+    # Summary
+    scored = [e for e in registry.values() if e.get("score", 0) > 0]
+    print(f"\n{'='*60}")
+    print("REGISTRY BUILT")
+    print(f"{'='*60}")
+    print(f"Total channels: {len(registry)}")
+    print(f"Scored: {len(scored)}")
+    print(f"Needs watermark review: {sum(1 for e in registry.values() if e.get('needs_manual_review', True))}")
+    list_channels()
+
+
+# =============================================================================
 # CHANNEL DISCOVERY
 # =============================================================================
 
@@ -839,6 +1009,7 @@ def main():
         epilog="""
 Examples:
     %(prog)s --check                          # Verify credentials
+    %(prog)s --seed                           # Build registry from your channels + videos
     %(prog)s --discover                       # Auto-discover + score channels
     %(prog)s --score UC1234...                # Score single channel
     %(prog)s --set-watermark UC1234... none   # Set watermark after review
@@ -848,6 +1019,8 @@ Examples:
     )
 
     parser.add_argument("--check", action="store_true", help="Check credentials")
+    parser.add_argument("--seed", action="store_true",
+                        help="Build registry from your known channels + videos")
     parser.add_argument("--discover", action="store_true", help="Auto-discover + qualify channels")
     parser.add_argument("--score", metavar="CHANNEL_ID", help="Score a single channel")
     parser.add_argument("--set-watermark", nargs=2, metavar=("CHANNEL_ID", "LEVEL"),
@@ -860,6 +1033,8 @@ Examples:
 
     if args.check:
         check_credentials()
+    elif args.seed:
+        run_seed()
     elif args.discover:
         run_discovery()
     elif args.score:
