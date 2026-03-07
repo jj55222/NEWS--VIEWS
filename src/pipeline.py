@@ -7,6 +7,7 @@ from typing import Any, Dict, List
 from src.common.io import read_json, write_json, write_jsonl
 from src.common.models import AuditEvent, BatchMetrics
 from src.ingest.curated_ingest import ingest_curated_sources
+from src.ingest.brave_discovery import discover_candidates_from_brave
 from src.normalize.normalizer import normalize_candidate
 from src.enrich.enricher import run_lightweight_enrichment
 from src.score.scorer import score_incident
@@ -95,10 +96,19 @@ def run_pipeline(input_path: str, output_dir: str) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run bodycam rebuild pipeline")
-    parser.add_argument("--input", required=True, help="Path to curated JSON source input")
+    parser.add_argument("--input", help="Path to curated JSON source input")
+    parser.add_argument("--keywords", nargs="+", help="Keyword queries for Brave-based discovery")
+    parser.add_argument("--count-per-keyword", type=int, default=5, help="Brave result count per keyword for discovery")
     parser.add_argument("--output", required=True, help="Output directory for run artifacts")
     args = parser.parse_args()
-    run_pipeline(args.input, args.output)
+
+    if bool(args.input) == bool(args.keywords):
+        parser.error("Provide exactly one of --input or --keywords")
+
+    if args.input:
+        run_pipeline(args.input, args.output)
+    else:
+        run_pipeline_from_keywords(args.keywords, args.output, count_per_keyword=args.count_per_keyword)
 
 
 if __name__ == "__main__":

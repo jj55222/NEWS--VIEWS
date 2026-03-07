@@ -4,9 +4,24 @@ import unittest
 from pathlib import Path
 
 from src.ingest.curated_ingest import ingest_curated_sources
+from src.ingest.brave_discovery import discover_candidates_from_brave
 from src.normalize.normalizer import normalize_candidate
 from src.pipeline import run_pipeline
 from src.score.scorer import score_incident
+
+
+class DummyResponse:
+    def __init__(self, payload):
+        self.payload = payload
+
+    def read(self):
+        return json.dumps(self.payload).encode("utf-8")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
 
 
 class PipelineTest(unittest.TestCase):
@@ -24,7 +39,7 @@ class PipelineTest(unittest.TestCase):
                 "watermark_likelihood": 0.1,
                 "hints": {
                     "agency": "Agency",
-                    "incident_date": "2023-12-01",
+                    "date_range": "2023-12-01",
                     "location": "Somewhere",
                     "people": ["A"],
                     "incident_type": "use of force",

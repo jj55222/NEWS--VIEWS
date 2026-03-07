@@ -39,15 +39,18 @@ class Candidate:
 @dataclass
 class Incident:
     incident_id: str
-    source_type: str
+    candidate_id: str
     source_url: str
-    source_title: str
-    channel_or_publisher: str
-    publish_date: str
-    raw_footage_flag: bool
-    watermark_flag: bool
+    title: str
+    description: str
+    publisher: str
+    published_date: str
+    media_type: str
+    transcript_available: bool
+    raw_footage_likelihood: float
+    watermark_likelihood: float
     agency: str
-    incident_date: str
+    date_range: str
     location: str
     people: List[str]
     incident_type: str
