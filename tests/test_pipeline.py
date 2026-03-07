@@ -24,11 +24,11 @@ class PipelineTest(unittest.TestCase):
                 "watermark_likelihood": 0.1,
                 "hints": {
                     "agency": "Agency",
-                    "date_range": "2023-12-01",
+                    "incident_date": "2023-12-01",
                     "location": "Somewhere",
-                    "people_entities": ["A"],
-                    "incident_category": "use of force",
-                    "key_allegations_or_events": ["disputed timeline"],
+                    "people": ["A"],
+                    "incident_type": "use of force",
+                    "allegations_or_charges": ["disputed timeline"],
                     "transcript_search_anchors": ["foot pursuit"],
                 },
             }
@@ -72,6 +72,10 @@ class PipelineTest(unittest.TestCase):
 
             self.assertTrue((output_dir / "audit.jsonl").exists())
             self.assertTrue((output_dir / "batch_metrics.json").exists())
+            first_incident = (output_dir / "incidents.jsonl").read_text().splitlines()[0]
+            parsed = json.loads(first_incident)
+            self.assertIn("researchability_score", parsed)
+            self.assertIn("routing_status", parsed)
 
 
 if __name__ == "__main__":

@@ -1,15 +1,15 @@
 # Operations
 
 ## Input contract
-Pipeline expects a JSON array with fields:
+Pipeline input is a JSON array with:
 - `source_url`
 - `title`
-- `description`
 - `publisher`
 - `published_date`
 - `media_type`
 
 Optional:
+- `description`
 - `transcript_available`
 - `raw_footage_likelihood`
 - `watermark_likelihood`
@@ -22,27 +22,11 @@ python -m src.pipeline --input <input.json> --output <run_dir>
 ```
 
 ## Artifact contract
-- `audit.jsonl`: stage trail and rationale per candidate.
-- `incidents.jsonl`: normalized incident objects.
-- `packets/*.json`: editor-facing packet documents.
-- `packets_index.json`: all packets in one file.
-- `batch_metrics.json`: run-level metrics.
+- `audit.jsonl`: full routing and enrichment decision log.
+- `incidents.jsonl`: required normalized incident records.
+- `packets/*.json`: editor-ready case packets.
+- `packets_index.json`: packet index.
+- `batch_metrics.json`: run-level metrics snapshot.
 
-## Batch metrics tracked
-- total harvested,
-- normalized,
-- enriched,
-- usable packets,
-- % with >=1 corroborating source,
-- % with >=2 corroborating sources,
-- % potentially premature ingest kills,
-- average missing-evidence count,
-- average story value score,
-- average researchability score.
-
-## Manual review guidance
-Use manual review for:
-- strong incidents with weak metadata,
-- contradictory evidence,
-- high-risk but high-value cases,
-- unresolved ambiguity not tractable via autonomous search.
+## Routing policy
+Ingest is routing-first. Candidates are routed to enrichment/review/archive lanes and still leave an auditable trace; no early binary pass/kill gate is used.

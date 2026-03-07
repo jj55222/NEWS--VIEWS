@@ -8,61 +8,62 @@ from src.common.models import Candidate, Incident, StageDecision, make_incident_
 def normalize_candidate(candidate: Candidate) -> Tuple[Incident, Dict[str, float], StageDecision]:
     hints = candidate.hints
     agency = hints.get("agency", "UNKNOWN")
-    date_range = hints.get("date_range", hints.get("incident_date", "UNKNOWN"))
+    incident_date = hints.get("incident_date", hints.get("date_range", "UNKNOWN"))
     location = hints.get("location", "UNKNOWN")
-    people_entities = hints.get("people_entities", hints.get("people", []))
-    incident_category = hints.get("incident_category", hints.get("incident_type", "UNSPECIFIED"))
-    key_allegations = hints.get("key_allegations_or_events", hints.get("allegations_or_charges", []))
-    transcript_anchors = hints.get("transcript_search_anchors", [])
+    people = hints.get("people", hints.get("people_entities", []))
+    incident_type = hints.get("incident_type", hints.get("incident_category", "UNSPECIFIED"))
+    allegations = hints.get("allegations_or_charges", hints.get("key_allegations_or_events", []))
+    anchors = hints.get("transcript_search_anchors", [])
 
-    uncertainty_notes = []
-    if agency == "UNKNOWN":
-        uncertainty_notes.append("Agency not confirmed")
-    if date_range == "UNKNOWN":
-        uncertainty_notes.append("Incident date/date-range uncertain")
-    if location == "UNKNOWN":
-        uncertainty_notes.append("Location uncertain")
-    if not transcript_anchors:
-        uncertainty_notes.append("Transcript-derived search anchors are sparse")
+    field_confidence = {
+        "agency": 0.9 if agency != "UNKNOWN" else 0.2,
+        "incident_date": 0.85 if incident_date != "UNKNOWN" else 0.2,
+        "location": 0.85 if location != "UNKNOWN" else 0.2,
+        "people": 0.8 if people else 0.3,
+        "incident_type": 0.75 if incident_type != "UNSPECIFIED" else 0.3,
+        "anchors": 0.75 if anchors else 0.25,
+    }
+
+    narrative_hook = "; ".join(anchors[:2]) if anchors else (
+        allegations[0] if allegations else f"Potential {incident_type.lower()} incident requiring corroboration."
+    )
 
     incident = Incident(
         incident_id=make_incident_id(candidate.candidate_id),
-        candidate_id=candidate.candidate_id,
+        source_type=candidate.source_type,
         source_url=candidate.source_url,
-        title=candidate.title,
-        description=candidate.description,
-        publisher=candidate.publisher,
-        published_date=candidate.published_date,
-        media_type=candidate.media_type,
-        transcript_available=candidate.transcript_available,
-        raw_footage_likelihood=candidate.raw_footage_likelihood,
-        watermark_likelihood=candidate.watermark_likelihood,
+        source_title=candidate.source_title,
+        channel_or_publisher=candidate.channel_or_publisher,
+        publish_date=candidate.publish_date,
+        raw_footage_flag=candidate.raw_footage_flag,
+        watermark_flag=candidate.watermark_flag,
         agency=agency,
-        date_range=date_range,
+        incident_date=incident_date,
         location=location,
-        people_entities=people_entities,
-        incident_category=incident_category,
-        key_allegations_or_events=key_allegations,
-        transcript_search_anchors=transcript_anchors,
-        uncertainty_notes=uncertainty_notes,
-        unresolved_questions=list(uncertainty_notes),
+        people=people,
+        incident_type=incident_type,
+        allegations_or_charges=allegations,
+        narrative_hook=narrative_hook,
+        routing_status="NORMALIZED",
+        decision_reason="Normalized from source metadata and provided hints.",
     )
 
-    confidence = {
-        "agency": 0.9 if agency != "UNKNOWN" else 0.2,
-        "date_range": 0.85 if date_range != "UNKNOWN" else 0.2,
-        "location": 0.85 if location != "UNKNOWN" else 0.2,
-        "people_entities": 0.8 if people_entities else 0.3,
-        "incident_category": 0.75 if incident_category != "UNSPECIFIED" else 0.3,
-        "transcript_search_anchors": 0.75 if transcript_anchors else 0.25,
-    }
-
-    strong_fields = sum(1 for k in ("agency", "date_range", "location") if confidence[k] >= 0.8)
+    strong_fields = sum(1 for k in ("agency", "incident_date", "location") if field_confidence[k] >= 0.8)
     if strong_fields == 3:
-        decision = StageDecision("normalize", "NORMALIZED_STRONG", "Core incident anchors were extracted with strong confidence.")
+        decision = StageDecision("normalize", "NORMALIZED_STRONG", "Core anchors extracted with strong confidence.")
     elif strong_fields >= 1:
-        decision = StageDecision("normalize", "NORMALIZED_PARTIAL", "Partial incident normalization succeeded; uncertainty explicitly logged.")
+        decision = StageDecision("normalize", "NORMALIZED_PARTIAL", "Partial normalization succeeded with explicit uncertainty.")
     else:
-        decision = StageDecision("normalize", "NORMALIZATION_FAILED", "Insufficient coherent anchors to support autonomous enrichment.")
+        incident.missing_evidence.extend([
+            "agency not confirmed",
+            "incident date not confirmed",
+            "location not confirmed",
+        ])
+        decision = StageDecision("normalize", "NORMALIZATION_FAILED", "Insufficient incident anchors for reliable matching.")
 
-    return incident, confidence, decision
+    if not people:
+        incident.missing_evidence.append("named people not extracted")
+    if not anchors:
+        incident.missing_evidence.append("transcript-derived hooks not found")
+
+    return incident, field_confidence, decision
