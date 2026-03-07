@@ -1,31 +1,36 @@
-# Bodycam Bot Rebuild
+# Bodycam Bot Rebuild Plan
 
-## Goal
-Build a reliable research pipeline that transforms raw body-worn camera footage candidates into evidence-backed case packets.
+## Mission
+Convert raw incident footage into structured, explainable, evidence-backed case opportunities.
 
-## Non-negotiables
-1. Ingest routes only; no final editorial PASS/KILL in ingest.
-2. Every viable candidate gets a normalized incident object.
-3. Story value and researchability are independently scored.
-4. Every decision emits auditable reasons.
-5. Missing evidence is explicitly tracked.
-6. Output artifact is a case packet, not a single label.
+## MVP foundation
+- Canonical incident schema first.
+- Routing-first ingest (`ROUTE_ENRICH`, `ROUTE_REVIEW`, `ARCHIVE`, `KILL`).
+- Explicit normalization outcomes (`NORMALIZED_STRONG`, `NORMALIZED_PARTIAL`, `NORMALIZATION_FAILED`).
+- Explicit enrichment outcomes (`ENRICHED_STRONG`, `ENRICHED_PARTIAL`, `NEEDS_MANUAL_RESEARCH`, `ENRICHMENT_STALLED`).
+- Distinct scoring for story value and researchability.
+- Required missing-evidence ledger in every non-killed case.
 
-## Pipeline stages
-1. `src/ingest/`: candidate harvesting from curated raw sources.
-2. `src/normalize/`: canonical incident normalization + confidence map.
-3. `src/enrich/`: enrichment attempts and result capture.
-4. `src/score/`: separate scoring for story value and researchability.
-5. `src/packet/`: packet assembly for editor handoff.
+## Canonical incident schema (minimum)
+- Provenance: source URL, title, description, publisher, date, media type.
+- Candidate quality hints: raw-footage likelihood, watermark likelihood, transcript availability.
+- Normalized incident: agency, date/date-range, location, people/entities, incident category, allegations/events.
+- Research hooks: transcript-derived search anchors, uncertainty notes, unresolved questions.
+- Enrichment: attempted queries, sources found/not found, probable matches, supporting documents.
+- Scoring: story value, researchability, evidence completeness, risk flags.
+- Final recommendation: `PRIORITY_PACKET`, `RESEARCH_PACKET`, `WATCHLIST_PACKET`, `MANUAL_REVIEW`, `ARCHIVE`, `KILL`.
 
-## Logging posture
-Each candidate keeps:
-- provenance,
-- extracted fields,
-- field confidence,
-- routing decisions and reasons,
-- enrichment queries attempted + found/not-found,
-- score breakdown,
+## Hard constraints
+- Do not collapse to final editorial judgments in ingest.
+- Do not merge story value + researchability into one score.
+- Do not hide ambiguity; record uncertainty and failure reasons.
+- Do not suppress incomplete but promising candidates.
+
+## Required auditable trail
+Per candidate, persist:
+- source provenance,
+- normalization fields + confidence,
+- stage routing decisions + reasons,
+- enrichment queries + outcomes,
+- score breakdown + recommendation,
 - packet status.
-
-All logs are JSONL for future tuning and replay.

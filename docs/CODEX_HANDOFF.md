@@ -1,21 +1,22 @@
-# Codex Handoff
+# Codex Handoff Notes
 
-This rebuild branch intentionally favors a narrow, inspectable path over source breadth.
+## Branch intent
+This branch intentionally favors rebuild clarity over legacy compatibility.
 
-## Current scope
-- Curated raw-source ingest only.
-- Deterministic normalization into canonical incident schema.
-- Lightweight enrichment hooks (query construction + capture of attempts/results).
-- Separate story value and researchability scoring.
-- Packet generation suitable for editor handoff.
+## What changed
+- Replaced legacy-ish ingest/normalize assumptions with staged routing and explicit outcomes.
+- Promoted a strict incident schema centered on provenance + uncertainty + missing evidence.
+- Added structured stage decisions with reasons at every stage.
+- Added batch-level metrics to evaluate behavior over runs, not anecdotes.
+- Kept enrichment offline-friendly with deterministic placeholders and explicit failure reasons.
 
-## Deferred on purpose
-- Broad autonomous source crawling.
-- Heavy ML extraction stack.
-- Automated publication decisions.
+## Next implementation targets
+1. Replace enrichment stubs with real search providers.
+2. Add duplicate detection with evidence-level linkage.
+3. Add stronger risk subtyping and policy checks.
+4. Expand source adapters while preserving schema and audit guarantees.
 
-## Next safe expansions
-1. Add new source adapters behind `src/ingest/` interface.
-2. Replace heuristic normalization with specialized extractors while preserving schema.
-3. Add real enrichment connectors (court dockets, FOIA portals, agency records).
-4. Add packet QA gate before export.
+## Non-negotiables for follow-on work
+- Never merge story value and researchability scores.
+- Never drop missing-evidence ledger from packets.
+- Never emit only final outcomes without stage-level reasons.

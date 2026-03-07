@@ -1,35 +1,58 @@
 # System Rubric
 
-## 1) Story Value Score (0-100)
-Measures editorial potential without considering ease of reporting.
+## Stage-by-stage intent
+1. Ingest: determine if candidate is incident-like and route appropriately.
+2. Normalize: extract coherent incident object while preserving uncertainty.
+3. Enrich: attach corroborating artifacts and explain lookup failures.
+4. Score: evaluate value, tractability, completeness, and risk separately.
+5. Packetize: produce editor-usable case packets with explicit next actions.
 
-Signals:
-- Narrative hook clarity.
-- Incident severity.
-- Public-interest angle (authority conduct, misconduct claims, procedural failures).
-- Human stakes and consequence clarity.
+## Scoring rubrics
 
-## 2) Researchability Score (0-100)
-Measures whether a human producer can quickly build a verified episode.
+### Story value (0-25)
+Dimensions (0-5 each):
+- stakes,
+- clarity of narrative,
+- emotional/dramatic tension,
+- novelty/distinctiveness,
+- follow-on potential.
 
-Signals:
-- Availability of primary artifacts.
-- Traceable agency/jurisdiction context.
-- People/incident/date/location completeness.
-- Corroboration opportunities.
+### Researchability (0-25)
+Dimensions (0-5 each):
+- source provenance,
+- search anchors,
+- supporting artifact availability,
+- cross-source consistency,
+- gap tractability.
 
-## 3) Evidence Completeness Score (0-100)
-Measures current state of documented evidence, not final truth.
+### Evidence completeness (0-10)
+1 point each for:
+- primary footage,
+- agency identified,
+- location identified,
+- date narrowed,
+- one corroborating source,
+- two+ corroborating sources,
+- legal/case context,
+- post-incident outcome context,
+- ambiguities explicitly listed,
+- source provenance linked.
 
-Signals:
-- Count/quality of supporting artifacts.
-- Key missing evidence list length.
-- Confidence in extracted normalized fields.
+### Risk flags (non-fatal)
+Common flags:
+- juvenile involvement,
+- identity mismatch,
+- weak provenance,
+- contradictory context,
+- unclear authenticity,
+- confusing timeline.
 
-## Routing guidance
-- `ROUTE_ENRICH`: low researchability but plausible lead.
-- `ROUTE_PACKET`: high enough completeness + researchability.
-- `ROUTE_HOLD`: critical identity/date/jurisdiction ambiguity.
-- `ROUTE_REJECT`: non-incident or invalid source.
+Risk should route toward manual review/caveats, not automatic kill.
 
-Every route must include `decision_reason` with concise, inspectable logic.
+## Decision matrix
+- `PRIORITY_PACKET`: high story value + high researchability.
+- `RESEARCH_PACKET`: workable editorial value + tractable research.
+- `WATCHLIST_PACKET`: compelling but incomplete evidence.
+- `MANUAL_REVIEW`: promising but ambiguous/risky.
+- `ARCHIVE`: low current value.
+- `KILL`: non-incident junk or unusable duplicate.
