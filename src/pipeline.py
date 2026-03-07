@@ -94,6 +94,21 @@ def run_pipeline(input_path: str, output_dir: str) -> None:
     write_json(output_root / "batch_metrics.json", metrics.asdict())
 
 
+def run_pipeline_from_keywords(keywords: list, output_dir: str, count_per_keyword: int = 5) -> None:
+    raw_items = discover_candidates_from_brave(keywords, count_per_keyword=count_per_keyword)
+    if not raw_items:
+        print("No candidates discovered from Brave search.")
+        return
+
+    # Write discovered items to a temp file and run the standard pipeline
+    import json
+    import tempfile
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as tmp:
+        json.dump(raw_items, tmp)
+        tmp_path = tmp.name
+    run_pipeline(tmp_path, output_dir)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run bodycam rebuild pipeline")
     parser.add_argument("--input", help="Path to curated JSON source input")

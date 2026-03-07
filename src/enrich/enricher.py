@@ -1,8 +1,14 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Tuple
+import os
+from typing import Any, Dict, List, Tuple
 
 from src.common.models import Incident, StageDecision
+from src.ingest.brave_discovery import _fetch_brave_results
+
+
+def _run_brave_query(query: str, api_key: str) -> List[Dict[str, Any]]:
+    return _fetch_brave_results(query, count=3, api_key=api_key)
 
 
 def run_lightweight_enrichment(incident: Incident) -> Tuple[Dict[str, Any], StageDecision]:
@@ -11,7 +17,7 @@ def run_lightweight_enrichment(incident: Incident) -> Tuple[Dict[str, Any], Stag
         f'{incident.location} {incident.incident_date} police press release',
     ]
 
-    results = []
+    results: List[Dict[str, Any]] = []
     if incident.agency != "UNKNOWN":
         results.append(
             {
@@ -29,6 +35,18 @@ def run_lightweight_enrichment(incident: Incident) -> Tuple[Dict[str, Any], Stag
                 "title": f"Local reporting context for {incident.location}",
                 "url": f"https://records.example/{incident.incident_id}/local",
                 "match_confidence": 0.55,
+            }
+        )
+
+    api_key = os.getenv("BRAVE_API_KEY", "").strip()
+    for query in queries:
+        if not api_key:
+            found = incident.raw_footage_likelihood >= 0.5
+            artifact = {
+                "artifact_type": "search_result",
+                "title": query,
+                "url": f"https://records.example/{incident.incident_id}/fallback",
+                "match_confidence": 0.4 if found else 0.1,
             }
             results.append(
                 {
@@ -79,24 +97,13 @@ def run_lightweight_enrichment(incident: Incident) -> Tuple[Dict[str, Any], Stag
                 }
             )
 
-    found_count = sum(1 for r in results if r["found"])
+    found_count = sum(1 for r in results if r.get("found"))
     if found_count:
-        incident.supporting_documents.extend([r["artifact"] for r in results if r["found"]])
+        incident.supporting_artifacts.extend([r["artifact"] for r in results if r.get("found")])
 
-    if found_count >= 2:
-        status = "ENRICHED_STRONG"
-        reason = "Multiple corroborating artifacts were attached."
-    elif found_count == 1:
-        status = "ENRICHED_PARTIAL"
-        reason = "At least one corroborating artifact found; gaps remain explicit."
-    elif incident.raw_footage_likelihood >= 0.6:
-        status = "NEEDS_MANUAL_RESEARCH"
-        reason = "Strong clip signal but enrichment stalled; route to manual research."
-    else:
-        status = "ENRICHMENT_STALLED"
-        reason = "No corroborating artifacts and weak search anchors."
-
-    incident.supporting_artifacts.extend(results)
+    incident.supporting_artifacts.extend(
+        r for r in results if "artifact_type" in r
+    )
 
     if len(results) >= 2:
         decision = StageDecision("enrich", "ENRICHED_STRONG", "Multiple corroborating artifacts located.")

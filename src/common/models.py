@@ -41,16 +41,18 @@ class Incident:
     incident_id: str
     candidate_id: str
     source_url: str
-    title: str
+    source_title: str
     description: str
-    publisher: str
-    published_date: str
-    media_type: str
+    channel_or_publisher: str
+    publish_date: str
+    source_type: str
     transcript_available: bool
+    raw_footage_flag: bool
+    watermark_flag: bool
     raw_footage_likelihood: float
     watermark_likelihood: float
     agency: str
-    date_range: str
+    incident_date: str
     location: str
     people: List[str]
     incident_type: str
