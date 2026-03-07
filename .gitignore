@@ -1,7 +1,9 @@
 # Secrets - NEVER commit these
 .env
 service_account.json
-*.json
+
+# Pipeline output (regenerated on each run)
+output/
 
 # Python
 __pycache__/
