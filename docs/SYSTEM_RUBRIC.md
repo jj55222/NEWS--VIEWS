@@ -1,58 +1,38 @@
 # System Rubric
 
 ## Stage-by-stage intent
-1. Ingest: determine if candidate is incident-like and route appropriately.
-2. Normalize: extract coherent incident object while preserving uncertainty.
-3. Enrich: attach corroborating artifacts and explain lookup failures.
-4. Score: evaluate value, tractability, completeness, and risk separately.
-5. Packetize: produce editor-usable case packets with explicit next actions.
+1. Ingest: route without hard blocking.
+2. Normalize: enforce canonical incident fields.
+3. Enrich: collect corroboration + preserve failed attempts.
+4. Score: keep story value and researchability independent.
+5. Packetize: produce actionable editor packet.
 
 ## Scoring rubrics
 
 ### Story value (0-25)
-Dimensions (0-5 each):
-- stakes,
-- clarity of narrative,
-- emotional/dramatic tension,
-- novelty/distinctiveness,
-- follow-on potential.
+- stakes
+- clarity
+- tension
+- novelty
+- follow-on potential
 
 ### Researchability (0-25)
-Dimensions (0-5 each):
-- source provenance,
-- search anchors,
-- supporting artifact availability,
-- cross-source consistency,
-- gap tractability.
+- source provenance
+- search anchors
+- artifact availability
+- cross-source consistency
+- gap tractability
 
-### Evidence completeness (0-10)
-1 point each for:
-- primary footage,
-- agency identified,
-- location identified,
-- date narrowed,
-- one corroborating source,
-- two+ corroborating sources,
-- legal/case context,
-- post-incident outcome context,
-- ambiguities explicitly listed,
-- source provenance linked.
+### Evidence completeness (checklist)
+- primary footage flag
+- agency/date/location identified
+- one+ corroborating source
+- two+ corroborating sources
+- provenance-linked artifacts
 
-### Risk flags (non-fatal)
-Common flags:
-- juvenile involvement,
-- identity mismatch,
-- weak provenance,
-- contradictory context,
-- unclear authenticity,
-- confusing timeline.
-
-Risk should route toward manual review/caveats, not automatic kill.
-
-## Decision matrix
-- `PRIORITY_PACKET`: high story value + high researchability.
-- `RESEARCH_PACKET`: workable editorial value + tractable research.
-- `WATCHLIST_PACKET`: compelling but incomplete evidence.
-- `MANUAL_REVIEW`: promising but ambiguous/risky.
-- `ARCHIVE`: low current value.
-- `KILL`: non-incident junk or unusable duplicate.
+## Recommendation matrix
+- `PRIORITY_PACKET`: high value + high researchability.
+- `RESEARCH_PACKET`: strong enough for focused next-pass enrichment.
+- `WATCHLIST_PACKET`: interesting but still evidence-thin.
+- `MANUAL_REVIEW`: unresolved risk/ambiguity.
+- `ARCHIVE`: preserve with rationale for possible revisit.

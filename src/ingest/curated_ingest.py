@@ -8,7 +8,6 @@ from src.common.models import Candidate, StageDecision, make_candidate_id
 REQUIRED_SOURCE_FIELDS = {
     "source_url",
     "title",
-    "description",
     "publisher",
     "published_date",
     "media_type",
@@ -25,25 +24,22 @@ def _boolish(value: Any, default: bool = False) -> bool:
     return default
 
 
-def _route_ingest(item: Dict[str, Any], candidate: Candidate) -> StageDecision:
-    title_desc = f"{candidate.title} {candidate.description}".lower()
-    has_anchor = any(
-        token in title_desc for token in ("bodycam", "officer", "deputy", "arrest", "stop", "pursuit")
+def _route_ingest(candidate: Candidate) -> StageDecision:
+    title_desc = f"{candidate.source_title} {candidate.description}".lower()
+    has_incident_anchor = any(
+        token in title_desc for token in ("bodycam", "officer", "deputy", "arrest", "stop", "pursuit", "shooting")
     )
 
+    if candidate.raw_footage_likelihood >= 0.6 and has_incident_anchor:
+        return StageDecision("ingest", "ROUTE_ENRICH", "Strong primary-footage signal; route to full enrichment lane.")
+
     if any(token in title_desc for token in NEGATIVE_TOKENS):
-        return StageDecision("ingest", "KILL", "Commentary/compilation signal dominates incident signal.")
+        return StageDecision("ingest", "ROUTE_ARCHIVE", "Likely commentary/compilation; retain trace in archive lane.")
 
-    if candidate.raw_footage_likelihood >= 0.6 and has_anchor:
-        return StageDecision("ingest", "ROUTE_ENRICH", "Primary-footage signal is strong enough for autonomous routing.")
+    if has_incident_anchor or candidate.raw_footage_likelihood >= 0.3:
+        return StageDecision("ingest", "ROUTE_REVIEW", "Promising but uncertain; continue normalization with review routing.")
 
-    if has_anchor:
-        return StageDecision("ingest", "ROUTE_REVIEW", "Incident signal present but primary-footage confidence is moderate.")
-
-    if candidate.raw_footage_likelihood >= 0.3:
-        return StageDecision("ingest", "ARCHIVE", "Weak incident anchors; retain for possible future revisit.")
-
-    return StageDecision("ingest", "KILL", "No reliable incident anchors in source metadata.")
+    return StageDecision("ingest", "ROUTE_ARCHIVE", "Low incident signal; preserve for future reprocessing.")
 
 
 def ingest_curated_sources(raw_items: List[Dict[str, Any]]) -> List[Tuple[Candidate, StageDecision]]:
@@ -54,20 +50,25 @@ def ingest_curated_sources(raw_items: List[Dict[str, Any]]) -> List[Tuple[Candid
             continue
 
         source_url = item["source_url"]
-        published_date = item["published_date"]
+        publish_date = item["published_date"]
+        raw_like = float(item.get("raw_footage_likelihood", 0.5))
+        watermark_like = float(item.get("watermark_likelihood", 0.0))
+
         candidate = Candidate(
-            candidate_id=make_candidate_id(source_url, published_date),
+            candidate_id=make_candidate_id(source_url, publish_date),
             source_url=source_url,
-            title=item["title"],
+            source_title=item["title"],
             description=item.get("description", ""),
-            publisher=item["publisher"],
-            published_date=published_date,
-            media_type=item["media_type"],
+            channel_or_publisher=item["publisher"],
+            publish_date=publish_date,
+            source_type=item["media_type"],
             transcript_available=_boolish(item.get("transcript_available"), default=False),
-            raw_footage_likelihood=float(item.get("raw_footage_likelihood", 0.5)),
-            watermark_likelihood=float(item.get("watermark_likelihood", 0.0)),
+            raw_footage_flag=raw_like >= 0.6,
+            watermark_flag=watermark_like >= 0.6,
+            raw_footage_likelihood=raw_like,
+            watermark_likelihood=watermark_like,
             raw_text=item.get("raw_text", ""),
             hints=item.get("hints", {}),
         )
-        candidates.append((candidate, _route_ingest(item, candidate)))
+        candidates.append((candidate, _route_ingest(candidate)))
     return candidates

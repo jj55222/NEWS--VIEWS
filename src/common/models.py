@@ -6,7 +6,7 @@ from typing import Any, Dict, List
 import hashlib
 
 
-INGEST_STATUSES = {"ROUTE_ENRICH", "ROUTE_REVIEW", "ARCHIVE", "KILL"}
+INGEST_STATUSES = {"ROUTE_ENRICH", "ROUTE_REVIEW", "ROUTE_ARCHIVE"}
 NORMALIZE_STATUSES = {"NORMALIZED_STRONG", "NORMALIZED_PARTIAL", "NORMALIZATION_FAILED"}
 ENRICH_STATUSES = {"ENRICHED_STRONG", "ENRICHED_PARTIAL", "NEEDS_MANUAL_RESEARCH", "ENRICHMENT_STALLED"}
 FINAL_RECOMMENDATIONS = {
@@ -15,7 +15,6 @@ FINAL_RECOMMENDATIONS = {
     "WATCHLIST_PACKET",
     "MANUAL_REVIEW",
     "ARCHIVE",
-    "KILL",
 }
 
 
@@ -23,12 +22,14 @@ FINAL_RECOMMENDATIONS = {
 class Candidate:
     candidate_id: str
     source_url: str
-    title: str
+    source_title: str
     description: str
-    publisher: str
-    published_date: str
-    media_type: str
+    channel_or_publisher: str
+    publish_date: str
+    source_type: str
     transcript_available: bool
+    raw_footage_flag: bool
+    watermark_flag: bool
     raw_footage_likelihood: float
     watermark_likelihood: float
     raw_text: str = ""
@@ -51,18 +52,18 @@ class Incident:
     agency: str
     date_range: str
     location: str
-    people_entities: List[str]
-    incident_category: str
-    key_allegations_or_events: List[str]
-    transcript_search_anchors: List[str]
-    uncertainty_notes: List[str]
-    supporting_documents: List[Dict[str, Any]] = field(default_factory=list)
-    unresolved_questions: List[str] = field(default_factory=list)
-    risk_flags: List[str] = field(default_factory=list)
+    people: List[str]
+    incident_type: str
+    allegations_or_charges: List[str]
+    supporting_artifacts: List[Dict[str, Any]] = field(default_factory=list)
+    narrative_hook: str = ""
     story_value_score: int = 0
     researchability_score: int = 0
     evidence_completeness_score: int = 0
-    final_recommendation: str = "MANUAL_REVIEW"
+    risk_flags: List[str] = field(default_factory=list)
+    missing_evidence: List[str] = field(default_factory=list)
+    routing_status: str = "ROUTE_REVIEW"
+    decision_reason: str = "Pending scoring"
 
     def asdict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -95,11 +96,11 @@ class AuditEvent:
             timestamp_utc=datetime.utcnow().isoformat(),
             source_provenance={
                 "source_url": candidate.source_url,
-                "title": candidate.title,
+                "source_title": candidate.source_title,
                 "description": candidate.description,
-                "publisher": candidate.publisher,
-                "published_date": candidate.published_date,
-                "media_type": candidate.media_type,
+                "channel_or_publisher": candidate.channel_or_publisher,
+                "publish_date": candidate.publish_date,
+                "source_type": candidate.source_type,
                 "raw_footage_likelihood": candidate.raw_footage_likelihood,
                 "watermark_likelihood": candidate.watermark_likelihood,
                 "transcript_available": candidate.transcript_available,
@@ -125,7 +126,6 @@ class BatchMetrics:
     usable_packets: int = 0
     percent_with_1plus_corroborating_source: float = 0.0
     percent_with_2plus_corroborating_sources: float = 0.0
-    percent_prematurely_killed: float = 0.0
     average_missing_evidence_count: float = 0.0
     average_story_value_score: float = 0.0
     average_researchability_score: float = 0.0
@@ -134,8 +134,8 @@ class BatchMetrics:
         return asdict(self)
 
 
-def make_candidate_id(source_url: str, published_date: str) -> str:
-    token = f"{source_url}|{published_date}".encode("utf-8")
+def make_candidate_id(source_url: str, publish_date: str) -> str:
+    token = f"{source_url}|{publish_date}".encode("utf-8")
     return f"CAND-{hashlib.sha1(token).hexdigest()[:12]}"
 
 

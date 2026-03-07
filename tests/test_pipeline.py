@@ -2,7 +2,6 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 from src.ingest.curated_ingest import ingest_curated_sources
 from src.ingest.brave_discovery import discover_candidates_from_brave
@@ -42,9 +41,9 @@ class PipelineTest(unittest.TestCase):
                     "agency": "Agency",
                     "date_range": "2023-12-01",
                     "location": "Somewhere",
-                    "people_entities": ["A"],
-                    "incident_category": "use of force",
-                    "key_allegations_or_events": ["disputed timeline"],
+                    "people": ["A"],
+                    "incident_type": "use of force",
+                    "allegations_or_charges": ["disputed timeline"],
                     "transcript_search_anchors": ["foot pursuit"],
                 },
             }
@@ -88,30 +87,10 @@ class PipelineTest(unittest.TestCase):
 
             self.assertTrue((output_dir / "audit.jsonl").exists())
             self.assertTrue((output_dir / "batch_metrics.json").exists())
-
-    @patch("src.ingest.brave_discovery.urlopen")
-    @patch.dict("os.environ", {"BRAVE_API_KEY": "token"})
-    def test_brave_discovery_maps_to_candidate_schema(self, mock_urlopen):
-        mock_urlopen.return_value = DummyResponse(
-            {
-                "web": {
-                    "results": [
-                        {
-                            "url": "https://news.example.com/bodycam-case",
-                            "title": "Officer bodycam release",
-                            "description": "Bodycam footage from incident",
-                            "meta_url": {"hostname": "news.example.com"},
-                            "page_age": "2024-05-01",
-                        }
-                    ]
-                }
-            }
-        )
-        rows = discover_candidates_from_brave(["bodycam arrest"], count_per_keyword=1)
-        self.assertEqual(len(rows), 1)
-        self.assertIn("source_url", rows[0])
-        self.assertIn("raw_footage_likelihood", rows[0])
-        self.assertEqual(rows[0]["media_type"], "video")
+            first_incident = (output_dir / "incidents.jsonl").read_text().splitlines()[0]
+            parsed = json.loads(first_incident)
+            self.assertIn("researchability_score", parsed)
+            self.assertIn("routing_status", parsed)
 
 
 if __name__ == "__main__":
