@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import time
 from typing import Any, Dict, List, Tuple
 
 from src.common.models import Incident, StageDecision
@@ -39,7 +40,9 @@ def run_lightweight_enrichment(incident: Incident) -> Tuple[Dict[str, Any], Stag
         )
 
     api_key = os.getenv("BRAVE_API_KEY", "").strip()
-    for query in queries:
+    for i, query in enumerate(queries):
+        if i > 0 and api_key:
+            time.sleep(1.1)
         if not api_key:
             found = incident.raw_footage_likelihood >= 0.5
             artifact = {

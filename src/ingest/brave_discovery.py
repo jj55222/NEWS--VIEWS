@@ -4,6 +4,8 @@ from datetime import datetime
 from typing import Any, Dict, Iterable, List
 import json
 import os
+import time
+from urllib.error import HTTPError
 from urllib.parse import quote_plus
 from urllib.request import Request, urlopen
 
@@ -43,9 +45,16 @@ def _fetch_brave_results(query: str, count: int, api_key: str) -> List[Dict[str,
             "X-Subscription-Token": api_key,
         },
     )
-    with urlopen(req, timeout=15) as response:
-        payload = json.loads(response.read().decode("utf-8"))
-    return payload.get("web", {}).get("results", [])
+    for attempt in range(3):
+        try:
+            with urlopen(req, timeout=15) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+            return payload.get("web", {}).get("results", [])
+        except HTTPError as e:
+            if e.code == 429 and attempt < 2:
+                time.sleep(2 ** attempt)
+                continue
+            raise
 
 
 def discover_candidates_from_brave(keywords: Iterable[str], count_per_keyword: int = 5) -> List[Dict[str, Any]]:
@@ -54,7 +63,9 @@ def discover_candidates_from_brave(keywords: Iterable[str], count_per_keyword: i
         raise RuntimeError("BRAVE_API_KEY is required for Brave discovery runs.")
 
     candidates: List[Dict[str, Any]] = []
-    for keyword in keywords:
+    for i, keyword in enumerate(keywords):
+        if i > 0:
+            time.sleep(1.1)
         for row in _fetch_brave_results(keyword, count_per_keyword, api_key):
             title = row.get("title", "")
             description = row.get("description", "")
