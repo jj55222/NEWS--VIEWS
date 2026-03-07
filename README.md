@@ -1,31 +1,24 @@
-# NEWS--VIEWS Bodycam Bot (Rebuild Lane)
+# NEWS--VIEWS Bodycam Bot (Rebuild V1)
 
-This repository is a clean rebuild of the bodycam bot. The pipeline is designed to transform raw footage candidates into structured, explainable, evidence-backed case packets.
-
-## Operating posture
-- Clean branch + narrow MVP.
-- Strict canonical incident schema.
-- Staged routing (not binary early pass/kill).
-- Rich candidate-level audit logs.
-- Editor-facing packet output.
+This repository implements a routing-first rebuild of the bodycam bot. The pipeline transforms raw footage candidates into structured incidents, enriches them, scores value vs researchability, and emits editor-ready case packets.
 
 ## Pipeline stages
-1. Harvest candidate source metadata and provenance.
-2. Normalize into a canonical incident object with confidence and uncertainty notes.
-3. Enrich with corroboration lookups, including explicit failure reasons.
+1. Ingest and route candidates from trusted source lanes.
+2. Normalize each candidate into the canonical incident schema.
+3. Enrich with corroborating artifacts and explicit misses.
 4. Score story value, researchability, evidence completeness, and risk.
-5. Packetize for editorial review, including a missing-evidence ledger.
+5. Generate case packets for editorial triage.
 
 ## Run
 ```bash
 python -m src.pipeline --input <path/to/candidates.json> --output runs/latest
 ```
 
-## Batch outputs
-- `audit.jsonl`: per-candidate auditable stage trail.
-- `incidents.jsonl`: normalized and scored incidents.
-- `packets/`: packet JSON files for editor use.
-- `packets_index.json`: packet list.
-- `batch_metrics.json`: batch success metrics.
+## Outputs
+- `audit.jsonl`
+- `incidents.jsonl`
+- `packets/`
+- `packets_index.json`
+- `batch_metrics.json`
 
-See `docs/` for rebuild spec, rubric, and operations notes.
+See `docs/BODYCAM_BOT_REBUILD.md` for the output contract and system posture.

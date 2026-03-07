@@ -1,36 +1,45 @@
 # Bodycam Bot Rebuild Plan
 
 ## Mission
-Convert raw incident footage into structured, explainable, evidence-backed case opportunities.
+Convert raw body-worn camera footage into structured, evidence-backed case packets that editors can quickly evaluate.
 
 ## MVP foundation
-- Canonical incident schema first.
-- Routing-first ingest (`ROUTE_ENRICH`, `ROUTE_REVIEW`, `ARCHIVE`, `KILL`).
-- Explicit normalization outcomes (`NORMALIZED_STRONG`, `NORMALIZED_PARTIAL`, `NORMALIZATION_FAILED`).
-- Explicit enrichment outcomes (`ENRICHED_STRONG`, `ENRICHED_PARTIAL`, `NEEDS_MANUAL_RESEARCH`, `ENRICHMENT_STALLED`).
-- Distinct scoring for story value and researchability.
-- Required missing-evidence ledger in every non-killed case.
+- Routing-first ingest (`ROUTE_ENRICH`, `ROUTE_REVIEW`, `ROUTE_ARCHIVE`) with no hard story kill at intake.
+- Strict normalized incident schema before any editorial judgment.
+- Explicit enrichment traces (queries attempted + outcomes).
+- Separate scoring for story value and researchability.
+- Case packet output as the primary deliverable.
+- Candidate-level audit trail for every stage decision.
 
-## Canonical incident schema (minimum)
-- Provenance: source URL, title, description, publisher, date, media type.
-- Candidate quality hints: raw-footage likelihood, watermark likelihood, transcript availability.
-- Normalized incident: agency, date/date-range, location, people/entities, incident category, allegations/events.
-- Research hooks: transcript-derived search anchors, uncertainty notes, unresolved questions.
-- Enrichment: attempted queries, sources found/not found, probable matches, supporting documents.
-- Scoring: story value, researchability, evidence completeness, risk flags.
-- Final recommendation: `PRIORITY_PACKET`, `RESEARCH_PACKET`, `WATCHLIST_PACKET`, `MANUAL_REVIEW`, `ARCHIVE`, `KILL`.
+## Required output contract
+Every normalized incident must include:
+- `incident_id`
+- `source_type`
+- `source_url`
+- `source_title`
+- `channel_or_publisher`
+- `publish_date`
+- `raw_footage_flag`
+- `watermark_flag`
+- `agency`
+- `incident_date`
+- `location`
+- `people`
+- `incident_type`
+- `allegations_or_charges`
+- `supporting_artifacts`
+- `narrative_hook`
+- `story_value_score`
+- `researchability_score`
+- `evidence_completeness_score`
+- `risk_flags`
+- `missing_evidence`
+- `routing_status`
+- `decision_reason`
 
-## Hard constraints
-- Do not collapse to final editorial judgments in ingest.
-- Do not merge story value + researchability into one score.
-- Do not hide ambiguity; record uncertainty and failure reasons.
-- Do not suppress incomplete but promising candidates.
-
-## Required auditable trail
-Per candidate, persist:
-- source provenance,
-- normalization fields + confidence,
-- stage routing decisions + reasons,
-- enrichment queries + outcomes,
-- score breakdown + recommendation,
-- packet status.
+## Stage posture
+1. Harvest: capture candidate + provenance without final judgment.
+2. Normalize: build incident object and track uncertainty.
+3. Enrich: attach corroboration and record misses.
+4. Score: evaluate value, researchability, completeness, and risk.
+5. Packetize: produce editor-ready case brief with next steps.

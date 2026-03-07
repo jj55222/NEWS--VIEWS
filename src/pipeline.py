@@ -19,40 +19,17 @@ def _compute_batch_metrics(audits: List[Dict[str, Any]], packets: List[Dict[str,
         1 for a in audits if any(d["stage"] == "normalize" and d["status"] != "NORMALIZATION_FAILED" for d in a["routing_decisions"])
     )
     metrics.candidates_enriched = sum(
-        1 for a in audits if any(d["stage"] == "enrich" and d["status"] != "ENRICHMENT_STALLED" for d in a["routing_decisions"])
+        1 for a in audits if any(d["stage"] == "enrich" and d["status"] in {"ENRICHED_STRONG", "ENRICHED_PARTIAL"} for d in a["routing_decisions"])
     )
-    metrics.usable_packets = sum(1 for p in packets if p["recommendation"] in {"PRIORITY_PACKET", "RESEARCH_PACKET", "WATCHLIST_PACKET"})
+    metrics.usable_packets = sum(1 for p in packets if p["routing_status"] in {"PRIORITY_PACKET", "RESEARCH_PACKET", "WATCHLIST_PACKET"})
 
     corroboration_counts = [len(p["evidence_list"]) for p in packets]
     if packets:
-        metrics.percent_with_1plus_corroborating_source = round(
-            sum(1 for c in corroboration_counts if c >= 1) / len(packets) * 100, 2
-        )
-        metrics.percent_with_2plus_corroborating_sources = round(
-            sum(1 for c in corroboration_counts if c >= 2) / len(packets) * 100, 2
-        )
-        metrics.percent_prematurely_killed = round(
-            sum(
-                1
-                for a in audits
-                if any(d["stage"] == "ingest" and d["status"] == "KILL" for d in a["routing_decisions"])
-                and a["source_provenance"].get("raw_footage_likelihood", 0) >= 0.6
-            )
-            / len(audits)
-            * 100,
-            2,
-        )
-        metrics.average_missing_evidence_count = round(
-            sum(len(p["missing_evidence_ledger"]) for p in packets) / len(packets), 2
-        )
-        metrics.average_story_value_score = round(
-            sum(p["confidence_notes"]["score_snapshot"]["story_value_score"] for p in packets) / len(packets),
-            2,
-        )
-        metrics.average_researchability_score = round(
-            sum(p["confidence_notes"]["score_snapshot"]["researchability_score"] for p in packets) / len(packets),
-            2,
-        )
+        metrics.percent_with_1plus_corroborating_source = round(sum(1 for c in corroboration_counts if c >= 1) / len(packets) * 100, 2)
+        metrics.percent_with_2plus_corroborating_sources = round(sum(1 for c in corroboration_counts if c >= 2) / len(packets) * 100, 2)
+        metrics.average_missing_evidence_count = round(sum(len(p["open_questions"]) for p in packets) / len(packets), 2)
+        metrics.average_story_value_score = round(sum(p["score_snapshot"]["story_value_score"] for p in packets) / len(packets), 2)
+        metrics.average_researchability_score = round(sum(p["score_snapshot"]["researchability_score"] for p in packets) / len(packets), 2)
     return metrics
 
 
@@ -70,29 +47,26 @@ def run_pipeline(input_path: str, output_dir: str) -> None:
         audit = AuditEvent.from_candidate(candidate)
         audit.routing_decisions.append({"stage": ingest_decision.stage, "status": ingest_decision.status, "reason": ingest_decision.reason})
 
-        if ingest_decision.status in {"KILL", "ARCHIVE"}:
-            audit.final_packet_status = ingest_decision.status
-            audit_out.append(audit.asdict())
-            continue
-
         incident, field_confidence, normalize_decision = normalize_candidate(candidate)
         audit.normalization_fields = {
             "agency": incident.agency,
-            "date_range": incident.date_range,
+            "incident_date": incident.incident_date,
             "location": incident.location,
-            "people_entities": incident.people_entities,
-            "incident_category": incident.incident_category,
-            "key_allegations_or_events": incident.key_allegations_or_events,
-            "transcript_search_anchors": incident.transcript_search_anchors,
-            "uncertainty_notes": incident.uncertainty_notes,
+            "people": incident.people,
+            "incident_type": incident.incident_type,
+            "allegations_or_charges": incident.allegations_or_charges,
+            "narrative_hook": incident.narrative_hook,
+            "missing_evidence": incident.missing_evidence,
         }
         audit.field_confidence = field_confidence
         audit.routing_decisions.append({"stage": normalize_decision.stage, "status": normalize_decision.status, "reason": normalize_decision.reason})
 
         if normalize_decision.status == "NORMALIZATION_FAILED":
+            incident.routing_status = "MANUAL_REVIEW"
+            incident.decision_reason = normalize_decision.reason
             audit.final_packet_status = "MANUAL_REVIEW"
-            audit_out.append(audit.asdict())
             incidents_out.append(incident.asdict())
+            audit_out.append(audit.asdict())
             continue
 
         enrich_data, enrich_decision = run_lightweight_enrichment(incident)
@@ -108,7 +82,7 @@ def run_pipeline(input_path: str, output_dir: str) -> None:
         write_json(packet_dir / f"{packet['packet_id']}.json", packet)
         packets_out.append(packet)
 
-        audit.final_packet_status = packet["recommendation"]
+        audit.final_packet_status = packet["routing_status"]
         incidents_out.append(incident.asdict())
         audit_out.append(audit.asdict())
 
