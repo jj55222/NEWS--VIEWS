@@ -1,5 +1,5 @@
 """
-Candidate harvesting: searches Exa for crime articles in configured regions.
+Candidate harvesting: searches for crime articles in configured regions.
 
 Ingest routes — it does NOT perform final editorial judgment.
 It finds raw candidates and passes them through prescore + routing.
@@ -15,11 +15,7 @@ from src.common.schema import Incident, SourceType
 from src.common.logging import PacketLog
 from src.ingest.prescore import compute_prescore
 from src.ingest.router import route_candidate
-
-
-def _init_exa(config: Config):
-    from exa_py import Exa
-    return Exa(api_key=config.exa_api_key)
+from src.search.orchestrator import SearchOrchestrator
 
 
 def _build_query(metro_tokens: str) -> str:
@@ -33,7 +29,7 @@ def _build_query(metro_tokens: str) -> str:
 
 
 def search_region(
-    exa,
+    orchestrator: SearchOrchestrator,
     region_id: str,
     metro_tokens: str,
     start_date: str,
@@ -41,34 +37,33 @@ def search_region(
     max_results: int,
     min_length: int,
 ) -> list[dict]:
-    """Search Exa for crime articles in one region. Returns raw article dicts."""
+    """Search for crime articles in one region. Returns raw article dicts."""
     query = _build_query(metro_tokens)
     print(f"\n[{region_id}] Searching: {query[:60]}...")
+    print(f"  Providers: {orchestrator.provider_names}")
 
     try:
-        results = exa.search_and_contents(
+        results = orchestrator.search_and_contents(
             query=query,
-            type="auto",
+            num_results=max_results,
+            max_characters=15000,
             start_published_date=start_date,
             end_published_date=end_date,
-            num_results=max_results,
-            text={"max_characters": 15000},
         )
     except Exception as e:
-        print(f"  [ERR] Exa search failed: {e}")
+        print(f"  [ERR] Search failed: {e}")
         return []
 
     articles = []
-    for r in results.results:
-        text = getattr(r, "text", "") or ""
-        if len(text) < min_length:
+    for r in results:
+        if len(r.text) < min_length:
             continue
         articles.append({
             "url": r.url,
-            "title": getattr(r, "title", ""),
-            "text": text,
-            "published_date": getattr(r, "published_date", ""),
-            "score": getattr(r, "score", 0),
+            "title": r.title,
+            "text": r.text,
+            "published_date": "",
+            "score": r.score,
         })
 
     print(f"  Found {len(articles)} articles (>={min_length} chars)")
@@ -86,7 +81,7 @@ def harvest_candidates(
     Returns list of (Incident, PacketLog) tuples for candidates
     that pass prescore and routing.
     """
-    exa = _init_exa(config)
+    orchestrator = SearchOrchestrator(config)
     seen = seen_urls or set()
     results = []
 
@@ -100,7 +95,7 @@ def harvest_candidates(
         end_date = str(region.get("End_Date") or config.default_end_date)[:10]
 
         articles = search_region(
-            exa, region_id, metro_tokens,
+            orchestrator, region_id, metro_tokens,
             start_date, end_date,
             config.max_results_per_region,
             config.min_article_length,
@@ -114,7 +109,7 @@ def harvest_candidates(
 
             # Build a raw incident stub
             incident = Incident(
-                source_type=SourceType.EXA.value,
+                source_type=SourceType.WEB_SEARCH.value,
                 source_url=url,
                 source_title=article.get("title", ""),
                 publish_date=article.get("published_date", ""),
@@ -151,7 +146,7 @@ def harvest_candidates(
             else:
                 print(f"  [{status.upper()}] {article.get('title', '')[:50]}")
 
-            time.sleep(config.exa_sleep)
+            time.sleep(config.search_sleep)
 
         time.sleep(config.region_sleep)
 

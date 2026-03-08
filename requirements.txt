@@ -1,14 +1,19 @@
-# NEWS → VIEWS Dependencies
+# NEWS -> VIEWS Dependencies
 
-# Google Sheets
+# Search providers
+requests>=2.28.0           # Brave Search API (direct HTTP)
+tavily-python>=0.3.0       # Tavily Search API
+exa-py>=1.0.0              # Exa Search API (fallback)
+
+# YouTube Data API
+google-api-python-client>=2.0.0
+
+# LLM (OpenRouter via OpenAI-compatible client)
+openai>=1.0.0
+
+# Google Sheets (optional)
 gspread>=5.0.0
 google-auth>=2.0.0
-
-# Exa Search
-exa-py>=1.0.0
-
-# OpenRouter/OpenAI
-openai>=1.0.0
 
 # Utilities
 python-dotenv>=1.0.0

@@ -8,6 +8,9 @@ For each normalized incident, searches multiple sources for:
 - Surveillance footage
 - News clips
 
+Uses the search orchestrator (Brave -> Tavily -> Exa) for web searches,
+and optionally the YouTube Data API for direct video discovery.
+
 Missing evidence is tracked explicitly — we record what we looked for
 and didn't find, not just what we found.
 """
@@ -20,11 +23,7 @@ from typing import Optional
 from src.common.config import Config
 from src.common.schema import Incident, Evidence, EvidenceType, EvidenceCompleteness
 from src.common.logging import PacketLog
-
-
-def _init_exa(config: Config):
-    from exa_py import Exa
-    return Exa(api_key=config.exa_api_key)
+from src.search.orchestrator import SearchOrchestrator
 
 
 # ---------------------------------------------------------------------------
@@ -78,33 +77,25 @@ def _build_queries(incident: Incident) -> list[tuple[str, str, list[str]]]:
     if defendant or jurisdiction_str:
         queries.append(("surveillance", f"{defendant} {jurisdiction_str} surveillance footage".strip(), video_domains))
 
-    # News clips (broader search)
+    # News clips (broader search — no domain filter)
     if defendant:
         queries.append(("news_clip", f"{defendant} case news video", []))
 
     return queries
 
 
-def _search_exa(exa, query: str, include_domains: list[str],
-                num_results: int = 5) -> list[dict]:
-    """Run a single Exa search. Returns list of result dicts."""
+def _search_web(orchestrator: SearchOrchestrator, query: str,
+                include_domains: list[str], num_results: int = 5) -> list[dict]:
+    """Run a web search via the orchestrator. Returns list of result dicts."""
     try:
-        kwargs = {
-            "query": query,
-            "type": "auto",
-            "num_results": num_results,
-        }
-        if include_domains:
-            kwargs["include_domains"] = include_domains
-
-        results = exa.search(**kwargs)
+        results = orchestrator.search(
+            query=query,
+            num_results=num_results,
+            include_domains=include_domains if include_domains else None,
+        )
         return [
-            {
-                "url": r.url,
-                "title": getattr(r, "title", ""),
-                "score": getattr(r, "score", 0),
-            }
-            for r in results.results
+            {"url": r.url, "title": r.title, "score": r.score}
+            for r in results
         ]
     except Exception as e:
         print(f"    [ERR] Search failed: {e}")
@@ -144,6 +135,32 @@ def _classify_source_tier(url: str, title: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# YouTube evidence type inference
+# ---------------------------------------------------------------------------
+
+def _infer_evidence_type(title: str, description: str = "") -> EvidenceType:
+    """Infer evidence type from YouTube video title/description."""
+    combined = f"{title} {description}".lower()
+
+    if any(kw in combined for kw in ["bodycam", "body cam", "body camera", "bwc", "body-worn"]):
+        return EvidenceType.BODYCAM
+    if any(kw in combined for kw in ["dashcam", "dash cam", "dash camera"]):
+        return EvidenceType.DASHCAM
+    if any(kw in combined for kw in ["interrogation", "interview", "confession", "polygraph"]):
+        return EvidenceType.INTERROGATION
+    if any(kw in combined for kw in ["surveillance", "cctv", "security camera", "security footage"]):
+        return EvidenceType.SURVEILLANCE
+    if any(kw in combined for kw in ["trial", "court", "sentencing", "hearing", "verdict", "testimony"]):
+        return EvidenceType.COURT_VIDEO
+    if any(kw in combined for kw in ["press conference", "press briefing", "news conference"]):
+        return EvidenceType.PRESS_CONFERENCE
+    if any(kw in combined for kw in ["news", "report", "breaking"]):
+        return EvidenceType.NEWS_CLIP
+
+    return EvidenceType.NEWS_CLIP  # default
+
+
+# ---------------------------------------------------------------------------
 # Main enrichment
 # ---------------------------------------------------------------------------
 
@@ -156,7 +173,7 @@ def enrich_incident(
     Search for supporting evidence and attach to incident.
     Tracks both found and missing evidence.
     """
-    exa = _init_exa(config)
+    orchestrator = SearchOrchestrator(config)
     queries = _build_queries(incident)
 
     if not queries:
@@ -167,9 +184,10 @@ def enrich_incident(
     searched_types = set()
     found_types = set()
 
+    # Web search enrichment
     for evidence_type_str, query, domains in queries:
         searched_types.add(evidence_type_str)
-        results = _search_exa(exa, query, domains)
+        results = _search_web(orchestrator, query, domains)
 
         log.add("enrich", "search",
                 detail=f"type={evidence_type_str} query={query[:60]} results={len(results)}")
@@ -187,7 +205,35 @@ def enrich_incident(
             incident.supporting_artifacts.append(evidence)
             found_types.add(evidence_type_str)
 
-        time.sleep(config.exa_sleep)
+        time.sleep(config.search_sleep)
+
+    # YouTube API enrichment (if configured)
+    if config.youtube_api_key:
+        try:
+            from src.search.youtube import YouTubeConnector
+            yt = YouTubeConnector(config.youtube_api_key, config.youtube_daily_quota)
+            region_id = getattr(incident, '_region_id', None)
+            yt_results = yt.search_incident_videos(incident, region_id=region_id)
+
+            log.add("enrich", "youtube_search",
+                    detail=f"results={len(yt_results)} quota_remaining={yt.units_remaining}")
+
+            for yr in yt_results:
+                tier = _classify_source_tier(yr.url, yr.title)
+                ev_type = _infer_evidence_type(yr.title, yr.description)
+                evidence = Evidence(
+                    evidence_type=ev_type,
+                    url=yr.url,
+                    title=yr.title,
+                    source_tier=tier,
+                    confidence=0.7,
+                    found_via=f"youtube_api:{yr.channel_title}",
+                )
+                incident.supporting_artifacts.append(evidence)
+                found_types.add(ev_type.value)
+
+        except Exception as e:
+            log.add("enrich", "youtube_error", detail=str(e))
 
     # Track what's missing
     all_types = {"bodycam", "interrogation", "court_video", "surveillance"}

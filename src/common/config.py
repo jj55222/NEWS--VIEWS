@@ -12,10 +12,18 @@ from dotenv import load_dotenv
 class Config:
     """Pipeline configuration loaded from environment."""
 
-    # API keys
+    # Search providers (Brave -> Tavily -> Exa fallback chain)
+    brave_api_key: str = ""
+    tavily_api_key: str = ""
     exa_api_key: str = ""
+
+    # LLM (OpenRouter)
     openrouter_api_key: str = ""
     openrouter_model: str = "deepseek/deepseek-v3.2"
+
+    # YouTube Data API v3 (optional, 10k units/day free)
+    youtube_api_key: str = ""
+    youtube_daily_quota: int = 8000
 
     # Google Sheets (optional — pipeline can run without it)
     sheet_id: str = ""
@@ -33,7 +41,7 @@ class Config:
     min_researchability: float = 25.0
 
     # Rate limiting (seconds)
-    exa_sleep: float = 0.3
+    search_sleep: float = 0.3
     llm_sleep: float = 0.5
     region_sleep: float = 1.0
 
@@ -50,9 +58,13 @@ class Config:
             load_dotenv()
 
         return cls(
+            brave_api_key=os.getenv("BRAVE_API_KEY", ""),
+            tavily_api_key=os.getenv("TAVILY_API_KEY", ""),
             exa_api_key=os.getenv("EXA_API_KEY", ""),
             openrouter_api_key=os.getenv("OPENROUTER_API_KEY", ""),
             openrouter_model=os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-v3.2"),
+            youtube_api_key=os.getenv("YOUTUBE_API_KEY", ""),
+            youtube_daily_quota=int(os.getenv("YOUTUBE_DAILY_QUOTA", "8000")),
             sheet_id=os.getenv("SHEET_ID", ""),
             service_account_path=os.getenv("SERVICE_ACCOUNT_PATH", "./service_account.json"),
             default_start_date=os.getenv("DEFAULT_START_DATE", "2018-01-01"),
@@ -67,8 +79,8 @@ class Config:
     def validate(self) -> list[str]:
         """Return list of missing required config values."""
         errors = []
-        if not self.exa_api_key:
-            errors.append("EXA_API_KEY not set")
+        if not self.brave_api_key and not self.tavily_api_key and not self.exa_api_key:
+            errors.append("No search provider configured. Set at least one of: BRAVE_API_KEY, TAVILY_API_KEY, EXA_API_KEY")
         if not self.openrouter_api_key:
             errors.append("OPENROUTER_API_KEY not set")
         return errors

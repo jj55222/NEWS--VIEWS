@@ -22,6 +22,7 @@ from typing import Optional
 class SourceType(str, Enum):
     RSS = "rss"
     EXA = "exa"
+    WEB_SEARCH = "web_search"
     MANUAL = "manual"
     YOUTUBE = "youtube"
     COURTLISTENER = "courtlistener"

@@ -223,6 +223,16 @@ def main():
             sys.exit(1)
         else:
             print("Configuration OK")
+            providers = []
+            if config.brave_api_key:
+                providers.append("Brave (primary)")
+            if config.tavily_api_key:
+                providers.append("Tavily")
+            if config.exa_api_key:
+                providers.append("Exa")
+            print(f"  Search providers: {' -> '.join(providers) or 'NONE'}")
+            print(f"  YouTube API: {'configured' if config.youtube_api_key else 'not configured'}")
+            print(f"  LLM: {config.openrouter_model}")
             sys.exit(0)
 
     if args.dry_run:
