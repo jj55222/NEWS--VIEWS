@@ -45,7 +45,6 @@ ARTIFACT_KEYWORDS = {
     "body worn camera": 15,
     "body-worn video": 15,
     "body worn video": 15,
-    "bwc": 15,
     "bwc footage": 15,
     "officer camera": 12,
     "officer's camera": 12,
@@ -78,7 +77,7 @@ ARTIFACT_KEYWORDS = {
     "cruiser footage": 12,
     "squad car camera": 12,
     "squad car video": 12,
-    "mvr": 10,  # mobile video recorder
+    # mvr matched via word-boundary (see WORD_BOUNDARY_KEYWORDS)
     "mobile video recorder": 12,
     # ---- Interrogation / interview ----
     "custodial interview": 15,
@@ -141,8 +140,7 @@ ARTIFACT_KEYWORDS = {
     "traffic cam": 10,
     "red light camera": 8,
     "license plate reader": 8,
-    "lpr": 6,
-    "alpr": 6,
+    # lpr/alpr matched via word-boundary (see WORD_BOUNDARY_KEYWORDS)
     "cctv": 12,
     "cctv footage": 15,
     "cctv video": 12,
@@ -334,7 +332,7 @@ ARTIFACT_KEYWORDS = {
     "grand jury indictment": 10,
     "public records": 6,
     "public records request": 8,
-    "foia": 8,
+    # foia matched via word-boundary (see WORD_BOUNDARY_KEYWORDS)
     "foia request": 8,
     "freedom of information": 8,
     "open records": 6,
@@ -440,7 +438,7 @@ LIFECYCLE_KEYWORDS = {
     "life sentence": 5,
     "life in prison": 5,
     "life without parole": 5,
-    "lwop": 5,
+    # lwop matched via word-boundary (see WORD_BOUNDARY_KEYWORDS)
     "consecutive sentences": 5,
     "concurrent sentences": 4,
     "death penalty": 5,
@@ -799,8 +797,7 @@ CRIME_SEVERITY_KEYWORDS = {
     "hit and run": 3,
     "hit-and-run": 3,
     "vehicular assault": 4,
-    "dui": 3,
-    "dwi": 3,
+    # dui/dwi matched via word-boundary (see WORD_BOUNDARY_KEYWORDS)
     "drunk driving": 3,
     "intoxication manslaughter": 5,
     "intoxication assault": 4,
@@ -816,7 +813,7 @@ CRIME_SEVERITY_KEYWORDS = {
     "pedophile": 5,
     "child pornography": 5,
     "child sexual abuse material": 5,
-    "csam": 5,
+    # csam matched via word-boundary (see WORD_BOUNDARY_KEYWORDS)
     "child exploitation": 5,
     "exploitation of a child": 5,
     "indecency with a child": 5,
@@ -827,8 +824,6 @@ CRIME_SEVERITY_KEYWORDS = {
     "sexual assault": 5,
     "sexual abuse": 5,
     "sexual battery": 5,
-    "rape": 5,
-    "raped": 5,
     "rapist": 5,
     "sexual predator": 5,
     "sex crime": 5,
@@ -935,7 +930,7 @@ CRIME_SEVERITY_KEYWORDS = {
     "bomb": 4,
     "bombing": 5,
     "bomb threat": 3,
-    "ied": 4,
+    # ied matched via word-boundary (see WORD_BOUNDARY_KEYWORDS)
     "improvised explosive": 5,
     "hate crime": 5,
     "hate-motivated": 5,
@@ -956,7 +951,10 @@ CRIME_SEVERITY_KEYWORDS = {
     "conspiracy": 3,
     "criminal conspiracy": 4,
     "racketeering": 4,
-    "rico": 4,
+    # rico matched via word-boundary (see WORD_BOUNDARY_KEYWORDS)
+    "rico charge": 4,
+    "rico case": 4,
+    "rico statute": 4,
     "organized crime": 4,
     "crime ring": 4,
     "gang-related": 3,
@@ -994,6 +992,33 @@ CRIME_SEVERITY_KEYWORDS = {
     "unmarked grave": 5,
     "clandestine grave": 5,
 }
+
+
+# Short keywords that need word-boundary matching to avoid false positives.
+# e.g. "rape" should not match "scraped" or "drape", "dui" not "duiker", etc.
+# Matched via regex \b{keyword}\b instead of simple substring.
+WORD_BOUNDARY_KEYWORDS = {
+    # Artifact
+    "bwc": ("artifact", 15),
+    "mvr": ("artifact", 10),
+    "lpr": ("artifact", 6),
+    "alpr": ("artifact", 6),
+    "foia": ("artifact", 8),
+    # Lifecycle
+    "lwop": ("lifecycle", 5),
+    "dui": ("severity", 3),
+    "dwi": ("severity", 3),
+    # Severity
+    "rape": ("severity", 5),
+    "raped": ("severity", 5),
+    "csam": ("severity", 5),
+    "ied": ("severity", 4),
+    "rico": ("severity", 4),
+}
+
+# Pre-compile word-boundary patterns
+_WB_PATTERNS = {kw: re.compile(r'\b' + re.escape(kw) + r'\b', re.IGNORECASE)
+                for kw in WORD_BOUNDARY_KEYWORDS}
 
 
 def compute_prescore(
@@ -1053,6 +1078,30 @@ def compute_prescore(
     severity_pts = min(severity_pts, 15)
     breakdown["crime_severity"] = severity_pts
     score += severity_pts
+
+    # Word-boundary keywords (short terms prone to false substring matches)
+    wb_artifact_pts = 0
+    wb_lifecycle_pts = 0
+    wb_severity_pts = 0
+    for kw, (category, pts) in WORD_BOUNDARY_KEYWORDS.items():
+        if _WB_PATTERNS[kw].search(text_lower):
+            if category == "artifact":
+                wb_artifact_pts += pts
+                matches.append(kw)
+            elif category == "lifecycle":
+                wb_lifecycle_pts += pts
+                matches.append(f"lifecycle:{kw}")
+            elif category == "severity":
+                wb_severity_pts += pts
+                matches.append(f"severity:{kw}")
+    # Add to existing totals (respect caps)
+    artifact_pts = min(breakdown["artifact_keywords"] + wb_artifact_pts, 45)
+    breakdown["artifact_keywords"] = artifact_pts
+    lifecycle_pts = min(breakdown["lifecycle"] + wb_lifecycle_pts, 15)
+    breakdown["lifecycle"] = lifecycle_pts
+    severity_pts = min(breakdown["crime_severity"] + wb_severity_pts, 15)
+    breakdown["crime_severity"] = severity_pts
+    score = artifact_pts + breakdown["video_platforms"] + lifecycle_pts + severity_pts
 
     # Jurisdiction bonuses
     jurisdiction_pts = 0
